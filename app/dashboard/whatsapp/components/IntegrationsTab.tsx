@@ -1,12 +1,163 @@
+"use client";
 import { useState, useEffect, FormEvent } from "react";
-import { Plug, Save, Copy, CheckCircle2, RefreshCw, Plus, Store, KeyRound, AlertCircle, X, ChevronDown, ChevronUp, Activity, Phone, Clock, Send, Loader2 } from "lucide-react";
+import { Save, Copy, CheckCircle2, RefreshCw, Plus, Store, AlertCircle, X, Activity, Phone, Clock, Send, Loader2, Trash2, ChevronRight, ArrowRight } from "lucide-react";
 import { WhatsAppTemplate } from "@/models/WhatsAppTemplateTypes";
 
+// ─── WooCommerce Event Catalog ───────────────────────────────────────────────
+const WC_EVENTS: { group: string; events: { value: string; label: string }[] }[] = [
+    {
+        group: "Order",
+        events: [
+            { value: "order.created", label: "Order Created" },
+            { value: "order.updated", label: "Order Updated" },
+            { value: "order.deleted", label: "Order Deleted" },
+            { value: "order.restored", label: "Order Restored" },
+        ]
+    },
+    {
+        group: "Customer",
+        events: [
+            { value: "customer.created", label: "Customer Created" },
+            { value: "customer.updated", label: "Customer Updated" },
+            { value: "customer.deleted", label: "Customer Deleted" },
+        ]
+    },
+    {
+        group: "Product",
+        events: [
+            { value: "product.created", label: "Product Created" },
+            { value: "product.updated", label: "Product Updated" },
+            { value: "product.deleted", label: "Product Deleted" },
+            { value: "product.restored", label: "Product Restored" },
+        ]
+    },
+    {
+        group: "Coupon",
+        events: [
+            { value: "coupon.created", label: "Coupon Created" },
+            { value: "coupon.updated", label: "Coupon Updated" },
+            { value: "coupon.deleted", label: "Coupon Deleted" },
+            { value: "coupon.restored", label: "Coupon Restored" },
+        ]
+    },
+];
+
+// ─── WooCommerce Data Points Per Event Group ─────────────────────────────────
+const WC_DATA_POINTS: Record<string, { label: string; path: string }[]> = {
+    order: [
+        { label: "Order ID", path: "id" },
+        { label: "Order Number", path: "number" },
+        { label: "Order Status", path: "status" },
+        { label: "Order Total", path: "total" },
+        { label: "Order Currency", path: "currency" },
+        { label: "Customer Note", path: "customer_note" },
+        { label: "Payment Method", path: "payment_method_title" },
+        { label: "Date Created", path: "date_created" },
+        // Billing
+        { label: "Billing First Name", path: "billing.first_name" },
+        { label: "Billing Last Name", path: "billing.last_name" },
+        { label: "Billing Full Name", path: "billing.full_name" },
+        { label: "Billing Email", path: "billing.email" },
+        { label: "Billing Phone", path: "billing.phone" },
+        { label: "Billing Company", path: "billing.company" },
+        { label: "Billing Address 1", path: "billing.address_1" },
+        { label: "Billing Address 2", path: "billing.address_2" },
+        { label: "Billing City", path: "billing.city" },
+        { label: "Billing State", path: "billing.state" },
+        { label: "Billing Postcode", path: "billing.postcode" },
+        { label: "Billing Country", path: "billing.country" },
+        // Shipping
+        { label: "Shipping First Name", path: "shipping.first_name" },
+        { label: "Shipping Last Name", path: "shipping.last_name" },
+        { label: "Shipping Address 1", path: "shipping.address_1" },
+        { label: "Shipping City", path: "shipping.city" },
+        { label: "Shipping State", path: "shipping.state" },
+        { label: "Shipping Postcode", path: "shipping.postcode" },
+        { label: "Shipping Country", path: "shipping.country" },
+        // Totals
+        { label: "Subtotal", path: "subtotal" },
+        { label: "Discount Total", path: "discount_total" },
+        { label: "Shipping Total", path: "shipping_total" },
+        { label: "Tax Total", path: "total_tax" },
+        // First line item
+        { label: "First Item Name", path: "line_items.0.name" },
+        { label: "First Item Quantity", path: "line_items.0.quantity" },
+        { label: "First Item Total", path: "line_items.0.total" },
+    ],
+    customer: [
+        { label: "Customer ID", path: "id" },
+        { label: "First Name", path: "first_name" },
+        { label: "Last Name", path: "last_name" },
+        { label: "Email", path: "email" },
+        { label: "Username", path: "username" },
+        { label: "Date Created", path: "date_created" },
+        { label: "Billing Phone", path: "billing.phone" },
+        { label: "Billing Email", path: "billing.email" },
+        { label: "Billing City", path: "billing.city" },
+        { label: "Billing Country", path: "billing.country" },
+        { label: "Orders Count", path: "orders_count" },
+        { label: "Total Spent", path: "total_spent" },
+    ],
+    product: [
+        { label: "Product ID", path: "id" },
+        { label: "Product Name", path: "name" },
+        { label: "SKU", path: "sku" },
+        { label: "Price", path: "price" },
+        { label: "Regular Price", path: "regular_price" },
+        { label: "Sale Price", path: "sale_price" },
+        { label: "Status", path: "status" },
+        { label: "Stock Status", path: "stock_status" },
+        { label: "Stock Quantity", path: "stock_quantity" },
+        { label: "Short Description", path: "short_description" },
+        { label: "Permalink", path: "permalink" },
+        { label: "Date Created", path: "date_created" },
+    ],
+    coupon: [
+        { label: "Coupon ID", path: "id" },
+        { label: "Coupon Code", path: "code" },
+        { label: "Discount Type", path: "discount_type" },
+        { label: "Amount", path: "amount" },
+        { label: "Expiry Date", path: "date_expires" },
+        { label: "Usage Count", path: "usage_count" },
+        { label: "Usage Limit", path: "usage_limit" },
+        { label: "Description", path: "description" },
+    ],
+};
+
+// Helper: get the event group prefix
+function getEventGroup(event: string): string {
+    return event.split(".")[0];
+}
+
+// Helper: extract template variables from a WhatsApp template
+function extractTemplateVars(template: WhatsAppTemplate | undefined): { id: string; label: string }[] {
+    if (!template) return [];
+    const vars: { id: string; label: string }[] = [];
+    template.components.forEach(comp => {
+        if (comp.type === "HEADER" && comp.format === "TEXT" && comp.text) {
+            const matches = comp.text.match(/\{\{(\d+)\}\}/g);
+            if (matches) matches.forEach(m => {
+                const n = m.replace(/[{}]/g, "");
+                vars.push({ id: `HEADER_${n}`, label: `Header {{${n}}}` });
+            });
+        }
+        if (comp.type === "BODY" && comp.text) {
+            const matches = comp.text.match(/\{\{(\d+)\}\}/g);
+            if (matches) matches.forEach(m => {
+                const n = m.replace(/[{}]/g, "");
+                vars.push({ id: `BODY_${n}`, label: `Body {{${n}}}` });
+            });
+        }
+    });
+    return vars;
+}
+
+// ─── Interfaces ───────────────────────────────────────────────────────────────
 interface AutomatedLog {
     _id: string;
     phone: string;
     templateName: string;
-    status: 'pending' | 'sent' | 'failed';
+    status: "pending" | "sent" | "failed";
     errorMessage?: string;
     messageId?: string;
     createdAt: string;
@@ -19,6 +170,7 @@ interface WooCommerceIntegration {
     triggers: any[];
 }
 
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function IntegrationsTab() {
     const [integration, setIntegration] = useState<WooCommerceIntegration | null>(null);
     const [educatorId, setEducatorId] = useState<string>("");
@@ -26,6 +178,7 @@ export default function IntegrationsTab() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
     // Logs state
     const [logs, setLogs] = useState<AutomatedLog[]>([]);
@@ -33,12 +186,12 @@ export default function IntegrationsTab() {
     const [processing, setProcessing] = useState(false);
     const [processResult, setProcessResult] = useState<string | null>(null);
 
-    // Form state
+    // Settings form
     const [isEnabled, setIsEnabled] = useState(false);
     const [webhookSecret, setWebhookSecret] = useState("");
     const [triggers, setTriggers] = useState<any[]>([]);
 
-    // New Trigger form state
+    // New trigger form
     const [showTriggerForm, setShowTriggerForm] = useState(false);
     const [newEvent, setNewEvent] = useState("order.created");
     const [newTemplate, setNewTemplate] = useState("");
@@ -52,33 +205,30 @@ export default function IntegrationsTab() {
     const fetchLogs = async () => {
         setLogsLoading(true);
         try {
-            const res = await fetch("/api/whatsapp/automations/logs?limit=20");
+            const res = await fetch("/api/whatsapp/automations/logs?limit=30");
             const data = await res.json();
             if (data.success) setLogs(data.messages || []);
-        } catch (err) {
-            console.error("Failed to load logs", err);
-        } finally {
-            setLogsLoading(false);
-        }
+        } catch { } finally { setLogsLoading(false); }
     };
 
     const handleProcessNow = async () => {
         setProcessing(true);
         setProcessResult(null);
         try {
-            const res = await fetch("/api/whatsapp/automations/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+            const res = await fetch("/api/whatsapp/automations/process", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: "{}"
+            });
             const data = await res.json();
             if (data.success) {
-                setProcessResult(`Processed ${data.processed} messages — ${data.sent} sent, ${data.failed} failed.`);
+                setProcessResult(`Processed ${data.processed} — ${data.sent} sent, ${data.failed} failed.`);
                 await fetchLogs();
             } else {
                 setProcessResult(data.error || "Unknown error");
             }
-        } catch (err) {
-            setProcessResult("Failed to call processor.");
-        } finally {
-            setProcessing(false);
-        }
+        } catch { setProcessResult("Failed to call processor."); }
+        finally { setProcessing(false); }
     };
 
     const fetchIntegrationAndTemplates = async () => {
@@ -88,32 +238,25 @@ export default function IntegrationsTab() {
                 fetch("/api/whatsapp/integrations/woocommerce"),
                 fetch("/api/whatsapp/templates")
             ]);
-
             const intData = await intRes.json();
             if (intData.success && intData.integration) {
                 setIntegration(intData.integration);
-                if (intData.integration.educatorId) {
-                    setEducatorId(intData.integration.educatorId);
-                }
+                if (intData.integration.educatorId) setEducatorId(intData.integration.educatorId);
                 setIsEnabled(intData.integration.isEnabled);
                 setWebhookSecret(intData.integration.webhookSecret);
                 setTriggers(intData.integration.triggers || []);
             }
-
             const tmplData = await tmplRes.json();
-            if (tmplData.success && tmplData.templates) {
-                setTemplates(tmplData.templates);
-            }
+            if (tmplData.success && tmplData.templates) setTemplates(tmplData.templates);
         } catch (err) {
             console.error("Failed to load WooCommerce integration data", err);
-        } finally {
-            setLoading(false);
-        }
+        } finally { setLoading(false); }
     };
 
-    const handleSavePrimarySettings = async (e: FormEvent) => {
+    const handleSaveSettings = async (e: FormEvent) => {
         e.preventDefault();
         setSaving(true);
+        setSaveMsg(null);
         try {
             const res = await fetch("/api/whatsapp/integrations/woocommerce", {
                 method: "POST",
@@ -123,12 +266,10 @@ export default function IntegrationsTab() {
             const data = await res.json();
             if (data.success) {
                 setIntegration(data.integration);
+                setSaveMsg("Settings saved!");
+                setTimeout(() => setSaveMsg(null), 3000);
             }
-        } catch (err) {
-            console.error("Save failed", err);
-        } finally {
-            setSaving(false);
-        }
+        } catch { } finally { setSaving(false); }
     };
 
     const handleCopyWebhook = () => {
@@ -138,34 +279,26 @@ export default function IntegrationsTab() {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    const handleTemplateSelectionForTrigger = (templateName: string) => {
+    // When template changes, auto-build mapping keys from its variables
+    const handleTemplateSelect = (templateName: string) => {
         setNewTemplate(templateName);
         const template = templates.find(t => t.name === templateName);
-        if (!template) {
-            setNewMappings({});
-            return;
-        }
+        const vars = extractTemplateVars(template);
+        const initial: Record<string, string> = {};
+        vars.forEach(v => { initial[v.id] = ""; });
+        setNewMappings(initial);
+    };
 
-        const initialMappings: Record<string, string> = {};
-
-        template.components.forEach(comp => {
-            if (comp.type === "HEADER" && comp.format === "TEXT" && comp.text) {
-                const matches = comp.text.match(/\{\{(\d+)\}\}/g);
-                if (matches) matches.forEach(m => { initialMappings[`HEADER_${m.replace(/[{}]/g, "")}`] = ""; });
-            } else if (comp.type === "BODY" && comp.text) {
-                const matches = comp.text.match(/\{\{(\d+)\}\}/g);
-                if (matches) matches.forEach(m => { initialMappings[`BODY_${m.replace(/[{}]/g, "")}`] = ""; });
-            }
-        });
-
-        setNewMappings(initialMappings);
+    // When event changes, reset template + mappings
+    const handleEventChange = (event: string) => {
+        setNewEvent(event);
+        setNewTemplate("");
+        setNewMappings({});
     };
 
     const handleAddTrigger = async () => {
         if (!newTemplate) return;
-
         const templateObj = templates.find(t => t.name === newTemplate);
-
         const newTriggerObj = {
             event: newEvent,
             templateName: newTemplate,
@@ -173,11 +306,8 @@ export default function IntegrationsTab() {
             variableMapping: newMappings,
             isActive: true
         };
-
         const updatedTriggers = [...triggers, newTriggerObj];
         setTriggers(updatedTriggers);
-
-        // Auto-save the new trigger to DB
         setSaving(true);
         try {
             const res = await fetch("/api/whatsapp/integrations/woocommerce", {
@@ -193,17 +323,12 @@ export default function IntegrationsTab() {
                 setNewTemplate("");
                 setNewMappings({});
             }
-        } catch (err) {
-            console.error("Failed to save trigger", err);
-        } finally {
-            setSaving(false);
-        }
+        } catch { } finally { setSaving(false); }
     };
 
     const handleRemoveTrigger = async (index: number) => {
         const updatedTriggers = triggers.filter((_, i) => i !== index);
         setTriggers(updatedTriggers);
-
         setSaving(true);
         try {
             await fetch("/api/whatsapp/integrations/woocommerce", {
@@ -211,199 +336,300 @@ export default function IntegrationsTab() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ triggers: updatedTriggers })
             });
-        } catch (err) {
-            console.error("Failed to remove trigger", err);
-        } finally {
-            setSaving(false);
-        }
+        } catch { } finally { setSaving(false); }
     };
 
     if (loading) {
         return <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-emerald-600" /></div>;
     }
 
-    const webhookUrl = educatorId ? `${typeof window !== 'undefined' ? window.location.origin : ''}/api/whatsapp/webhooks/woocommerce/${educatorId}` : 'Loading...';
+    const webhookUrl = educatorId
+        ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/whatsapp/webhooks/woocommerce/${educatorId}`
+        : "Loading...";
+
+    const selectedTemplateObj = templates.find(t => t.name === newTemplate);
+    const templateVars = extractTemplateVars(selectedTemplateObj);
+    const eventGroup = getEventGroup(newEvent);
+    const wcDataPoints = WC_DATA_POINTS[eventGroup] || [];
 
     return (
         <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-300">
-            {/* Header */}
+            {/* Page Header */}
             <div>
                 <h2 className="text-2xl font-bold tracking-tight text-zinc-900">Integrations</h2>
                 <p className="text-zinc-500 mt-1">Connect external platforms to automate your WhatsApp messaging.</p>
             </div>
 
+            {/* WooCommerce Card */}
             <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+                {/* Card Header */}
                 <div className="p-6 border-b border-zinc-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="bg-purple-100 p-3 rounded-xl">
                             <Store className="w-6 h-6 text-purple-700" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-zinc-900 flex items-center gap-2">WooCommerce</h3>
-                            <p className="text-sm text-zinc-500">Automatically send WhatsApp receipts, updates, and more using native Webhooks.</p>
+                            <h3 className="text-lg font-bold text-zinc-900">WooCommerce</h3>
+                            <p className="text-sm text-zinc-500">Automatically send WhatsApp messages based on WooCommerce events.</p>
                         </div>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" checked={isEnabled} onChange={(e) => setIsEnabled(e.target.checked)} />
-                        <div className="w-11 h-6 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                        <span className="ms-3 text-sm font-medium text-zinc-900">{isEnabled ? 'Active' : 'Inactive'}</span>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                        <span className="text-sm font-medium text-zinc-700">Integration Active</span>
+                        <div
+                            onClick={() => setIsEnabled(!isEnabled)}
+                            className={`relative w-12 h-6 rounded-full transition-colors ${isEnabled ? "bg-emerald-500" : "bg-zinc-300"}`}
+                        >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${isEnabled ? "translate-x-7" : "translate-x-1"}`} />
+                        </div>
                     </label>
                 </div>
 
-                <div className="p-6 md:p-8 grid grid-cols-1 lg:grid-cols-2 gap-12">
-                    {/* Setup Instructions & Config */}
-                    <div className="space-y-6">
-                        <div>
-                            <h4 className="text-sm font-bold text-zinc-900 mb-2 uppercase tracking-wide">1. Setup Webhook URL</h4>
-                            <p className="text-sm text-zinc-600 mb-4 bg-zinc-50 p-3 rounded-lg border border-zinc-100">
-                                In your WordPress admin, go to <strong>WooCommerce &gt; Settings &gt; Advanced &gt; Webhooks</strong>. Click "Add Webhook". Paste the Delivery URL below.
+                <div className="p-6 space-y-8">
+                    {/* Step 1: Webhook Setup */}
+                    <div>
+                        <div className="flex items-center gap-3 mb-4">
+                            <span className="w-7 h-7 rounded-full bg-zinc-900 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
+                            <h4 className="text-sm font-bold text-zinc-900 uppercase tracking-wide">Setup Webhook in WooCommerce</h4>
+                        </div>
+                        <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 space-y-4">
+                            <p className="text-sm text-zinc-600">
+                                In your WordPress admin, go to <strong>WooCommerce &gt; Settings &gt; Advanced &gt; Webhooks</strong>, click <strong>Add Webhook</strong>, set Topic to <strong>Order created</strong>, and paste this Delivery URL:
                             </p>
-
-                            <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Delivery URL (Payload: JSON)</label>
                             <div className="flex items-center gap-2">
-                                <code className="flex-1 bg-zinc-900 text-emerald-400 p-2.5 rounded-lg text-xs break-all selection:bg-emerald-400/30">
+                                <code className="flex-1 bg-white border border-zinc-200 rounded-lg px-3 py-2.5 text-xs font-mono text-zinc-700 truncate shadow-sm">
                                     {webhookUrl}
                                 </code>
-                                <button onClick={handleCopyWebhook} className="bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 p-2.5 rounded-lg transition-colors flex items-center justify-center shrink-0">
-                                    {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                                <button
+                                    onClick={handleCopyWebhook}
+                                    className={`flex-shrink-0 px-4 py-2.5 rounded-lg text-sm font-medium transition-all border ${copied ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-white border-zinc-200 text-zinc-700 hover:bg-zinc-100"}`}
+                                >
+                                    {copied ? <><CheckCircle2 className="w-4 h-4 inline mr-1" />Copied</> : <><Copy className="w-4 h-4 inline mr-1" />Copy</>}
                                 </button>
                             </div>
-                        </div>
-
-                        <div>
-                            <h4 className="text-sm font-bold text-zinc-900 mb-2 uppercase tracking-wide">2. Secure The Connection</h4>
-                            <p className="text-sm text-zinc-600 mb-4 bg-zinc-50 p-3 rounded-lg border border-zinc-100">
-                                Enter a completely random string as your Webhook Secret in WooCommerce. Then paste that <strong>exact same secret</strong> below so we can verify the signature and guarantee zero errors from fake requests.
-                            </p>
-
-                            <form onSubmit={handleSavePrimarySettings} className="space-y-4">
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider block mb-1.5">Webhook Secret Key</label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <KeyRound className="h-4 w-4 text-zinc-400" />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={webhookSecret}
-                                            onChange={e => setWebhookSecret(e.target.value)}
-                                            className="w-full bg-white border border-zinc-200 rounded-lg pl-10 pr-4 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono"
-                                        />
-                                    </div>
-                                </div>
-
-                                <button type="submit" disabled={saving} className="bg-zinc-900 text-white rounded-lg px-6 py-2 text-sm font-bold shadow-sm hover:bg-zinc-800 transition-colors disabled:opacity-50 flex items-center gap-2">
-                                    {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                    Save Primary Settings
-                                </button>
-                            </form>
                         </div>
                     </div>
 
-                    {/* Triggers & Mapping */}
-                    <div>
-                        <div className="flex items-center justify-between mb-6">
-                            <h4 className="text-sm font-bold text-zinc-900 uppercase tracking-wide">3. Message Triggers</h4>
-                            {!showTriggerForm && (
-                                <button onClick={() => setShowTriggerForm(true)} className="text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1">
-                                    <Plus className="w-3 h-3" /> Add Trigger
+                    {/* Step 2: Secret */}
+                    <form onSubmit={handleSaveSettings}>
+                        <div className="flex items-center gap-3 mb-4">
+                            <span className="w-7 h-7 rounded-full bg-zinc-900 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
+                            <h4 className="text-sm font-bold text-zinc-900 uppercase tracking-wide">Enter Your Webhook Secret</h4>
+                        </div>
+                        <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 space-y-3">
+                            <p className="text-sm text-zinc-600">
+                                Copy the <strong>Secret</strong> shown in WooCommerce and paste it here. This is used to verify all incoming webhook requests.
+                            </p>
+                            <div className="flex gap-3">
+                                <input
+                                    type="text"
+                                    value={webhookSecret}
+                                    onChange={(e) => setWebhookSecret(e.target.value)}
+                                    placeholder="Paste your WooCommerce Webhook Secret…"
+                                    className="flex-1 bg-white border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={saving}
+                                    className="bg-zinc-900 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-zinc-800 transition-colors flex items-center gap-2 disabled:opacity-70 shadow-sm"
+                                >
+                                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                    Save
                                 </button>
+                            </div>
+                            {saveMsg && (
+                                <p className="text-sm text-emerald-600 flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4" />{saveMsg}
+                                </p>
                             )}
                         </div>
+                    </form>
 
-                        {showTriggerForm ? (
-                            <div className="bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 space-y-5 relative">
-                                <button type="button" onClick={() => setShowTriggerForm(false)} className="absolute top-3 right-3 text-zinc-400 hover:text-zinc-800">
-                                    <X className="w-4 h-4" />
-                                </button>
-
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-700 block mb-1.5">WooCommerce Event Topic</label>
-                                    <select value={newEvent} onChange={e => setNewEvent(e.target.value)} className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900">
-                                        <option value="order.created">Order Created</option>
-                                        <option value="order.updated">Order Updated</option>
-                                        <option value="customer.created">Customer Created</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-700 block mb-1.5">Send Template</label>
-                                    <select value={newTemplate} onChange={e => handleTemplateSelectionForTrigger(e.target.value)} className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900">
-                                        <option value="">-- Select Template --</option>
-                                        {templates.map(t => <option key={t.name} value={t.name}>{t.name}</option>)}
-                                    </select>
-                                </div>
-
-                                {Object.keys(newMappings).length > 0 && (
-                                    <div className="bg-white p-4 rounded-lg border border-zinc-200 space-y-3">
-                                        <div className="flex items-center gap-2 mb-2 text-amber-600 bg-amber-50 p-2 rounded text-xs font-medium">
-                                            <AlertCircle className="w-4 h-4 shrink-0" />
-                                            Map variables to JSON paths. e.g. 'billing.first_name' or 'status'
-                                        </div>
-                                        {Object.keys(newMappings).map(varId => (
-                                            <div key={varId}>
-                                                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">{varId}</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder="billing.first_name"
-                                                    value={newMappings[varId]}
-                                                    onChange={e => setNewMappings(prev => ({ ...prev, [varId]: e.target.value }))}
-                                                    className="w-full bg-zinc-50 border border-zinc-200 rounded px-2.5 py-1.5 text-xs font-mono text-zinc-900"
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                <button onClick={handleAddTrigger} disabled={!newTemplate || Object.keys(newMappings).some(k => !newMappings[k])} className="w-full bg-emerald-600 text-white rounded-lg py-2 text-sm font-bold shadow-sm hover:bg-emerald-700 transition-colors disabled:opacity-50">
-                                    Save Rules
-                                </button>
+                    {/* Step 3: Message Triggers */}
+                    <div>
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <span className="w-7 h-7 rounded-full bg-zinc-900 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">3</span>
+                                <h4 className="text-sm font-bold text-zinc-900 uppercase tracking-wide">Message Triggers</h4>
                             </div>
-                        ) : (
-                            <div className="space-y-3">
-                                {triggers.length === 0 ? (
-                                    <div className="text-center py-8 bg-zinc-50 rounded-xl border border-dashed border-zinc-200">
-                                        <p className="text-sm text-zinc-500">No message triggers mapped yet.</p>
+                            <button
+                                onClick={() => setShowTriggerForm(!showTriggerForm)}
+                                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors shadow-sm"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Add Trigger
+                            </button>
+                        </div>
+
+                        {/* Add Trigger Form */}
+                        {showTriggerForm && (
+                            <div className="bg-zinc-50 border border-zinc-200 rounded-2xl p-5 mb-5 space-y-5">
+                                <div className="flex items-center justify-between">
+                                    <h5 className="text-sm font-bold text-zinc-900">New Message Trigger</h5>
+                                    <button onClick={() => setShowTriggerForm(false)} className="text-zinc-400 hover:text-zinc-700 transition-colors">
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                {/* Event + Template Row */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">WooCommerce Event</label>
+                                        <select
+                                            value={newEvent}
+                                            onChange={(e) => handleEventChange(e.target.value)}
+                                            className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 shadow-sm"
+                                        >
+                                            {WC_EVENTS.map(group => (
+                                                <optgroup key={group.group} label={group.group}>
+                                                    {group.events.map(e => (
+                                                        <option key={e.value} value={e.value}>{e.label}</option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
+                                        </select>
                                     </div>
-                                ) : (
-                                    triggers.map((trigger, idx) => (
-                                        <div key={idx} className="bg-white border border-zinc-200 rounded-xl p-4 flex items-start justify-between group">
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="bg-purple-100 text-purple-800 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded flex items-center gap-1.5">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                                                        {trigger.event}
-                                                    </span>
-                                                </div>
-                                                <div className="text-zinc-600 text-sm flex items-center gap-2">
-                                                    Sends: <span className="font-semibold text-zinc-900">{trigger.templateName}</span>
-                                                </div>
-                                            </div>
-                                            <button onClick={() => handleRemoveTrigger(idx)} className="text-zinc-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity p-1">
-                                                <X className="w-4 h-4" />
-                                            </button>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider">WhatsApp Template</label>
+                                        <select
+                                            value={newTemplate}
+                                            onChange={(e) => handleTemplateSelect(e.target.value)}
+                                            className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 shadow-sm"
+                                        >
+                                            <option value="">— Select a template —</option>
+                                            {templates.map(t => (
+                                                <option key={t.name} value={t.name}>{t.name} ({t.language})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* Two-column Variable Mapping */}
+                                {newTemplate && templateVars.length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <h6 className="text-xs font-bold text-zinc-700 uppercase tracking-wider">Variable Mapping</h6>
+                                            <span className="text-xs text-zinc-400">— map each template variable to a WooCommerce data field</span>
                                         </div>
-                                    ))
+
+                                        {/* Header Row */}
+                                        <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center px-3">
+                                            <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">Template Variable</span>
+                                            <span className="w-6" />
+                                            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">WooCommerce Field ({eventGroup})</span>
+                                        </div>
+
+                                        {/* Mapping Rows */}
+                                        <div className="space-y-2">
+                                            {templateVars.map(v => (
+                                                <div key={v.id} className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center bg-white border border-zinc-200 rounded-xl px-4 py-3 shadow-sm">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />
+                                                        <span className="text-sm font-semibold text-zinc-800">{v.label}</span>
+                                                    </div>
+                                                    <ArrowRight className="w-4 h-4 text-zinc-300 flex-shrink-0" />
+                                                    <select
+                                                        value={newMappings[v.id] || ""}
+                                                        onChange={(e) => setNewMappings(prev => ({ ...prev, [v.id]: e.target.value }))}
+                                                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                                                    >
+                                                        <option value="">— Select field —</option>
+                                                        {wcDataPoints.map(dp => (
+                                                            <option key={dp.path} value={dp.path}>{dp.label} ({dp.path})</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
                                 )}
+
+                                {newTemplate && templateVars.length === 0 && (
+                                    <p className="text-sm text-zinc-500 bg-zinc-100 rounded-xl px-4 py-3">
+                                        This template has no dynamic variables. It will be sent as-is.
+                                    </p>
+                                )}
+
+                                <div className="flex justify-end pt-2">
+                                    <button
+                                        onClick={handleAddTrigger}
+                                        disabled={!newTemplate || saving}
+                                        className="bg-purple-600 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors flex items-center gap-2 disabled:opacity-60 shadow-sm"
+                                    >
+                                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                        Save Trigger
+                                    </button>
+                                </div>
                             </div>
                         )}
+
+                        {/* Existing Triggers List */}
+                        <div className="space-y-3">
+                            {triggers.length === 0 ? (
+                                <div className="text-center py-8 bg-zinc-50 rounded-xl border border-dashed border-zinc-200">
+                                    <ChevronRight className="w-6 h-6 text-zinc-300 mx-auto mb-2" />
+                                    <p className="text-sm text-zinc-500">No triggers configured yet. Add one above.</p>
+                                </div>
+                            ) : (
+                                triggers.map((trigger, idx) => {
+                                    const mappingEntries = Object.entries(
+                                        trigger.variableMapping instanceof Map
+                                            ? Object.fromEntries(trigger.variableMapping)
+                                            : trigger.variableMapping || {}
+                                    );
+                                    return (
+                                        <div key={idx} className="bg-white border border-zinc-200 rounded-xl overflow-hidden group shadow-sm">
+                                            <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-100">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="bg-purple-100 text-purple-800 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full">
+                                                        {trigger.event}
+                                                    </span>
+                                                    <span className="text-zinc-400 text-sm">→</span>
+                                                    <span className="text-sm font-semibold text-zinc-900">{trigger.templateName}</span>
+                                                    <span className="text-xs text-zinc-400">({trigger.templateLanguage})</span>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleRemoveTrigger(idx)}
+                                                    className="opacity-0 group-hover:opacity-100 transition-opacity text-zinc-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                            {mappingEntries.length > 0 && (
+                                                <div className="px-5 py-3 bg-zinc-50/50">
+                                                    <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                                                        {mappingEntries.map(([varKey, wcPath]) => (
+                                                            <div key={varKey} className="flex items-center gap-2 text-xs text-zinc-600">
+                                                                <span className="font-mono text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">{varKey}</span>
+                                                                <ArrowRight className="w-3 h-3 text-zinc-300" />
+                                                                <span className="font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded truncate">{String(wcPath)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Automated Message Logs */}
             <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+                <div className="p-5 border-b border-zinc-100 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="bg-emerald-100 p-2.5 rounded-xl">
                             <Activity className="w-5 h-5 text-emerald-700" />
                         </div>
                         <div>
                             <h3 className="text-base font-bold text-zinc-900">Automated Message Logs</h3>
-                            <p className="text-xs text-zinc-500 mt-0.5">Recent messages triggered by WooCommerce events</p>
+                            <p className="text-xs text-zinc-500 mt-0.5">Last 30 messages triggered by WooCommerce events</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         {processResult && (
                             <span className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 px-3 py-1.5 rounded-lg">{processResult}</span>
                         )}
@@ -413,10 +639,10 @@ export default function IntegrationsTab() {
                             className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-70 shadow-sm"
                         >
                             {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                            Process Now
+                            Process Pending
                         </button>
-                        <button onClick={fetchLogs} className="p-2 hover:bg-zinc-100 rounded-xl transition-colors" title="Refresh">
-                            <RefreshCw className={`w-4 h-4 text-zinc-400 ${logsLoading ? 'animate-spin' : ''}`} />
+                        <button onClick={fetchLogs} className="p-2 hover:bg-zinc-100 rounded-xl transition-colors">
+                            <RefreshCw className={`w-4 h-4 text-zinc-400 ${logsLoading ? "animate-spin" : ""}`} />
                         </button>
                     </div>
                 </div>
@@ -425,7 +651,7 @@ export default function IntegrationsTab() {
                     {logsLoading ? (
                         <div className="flex items-center justify-center py-10 gap-3 text-zinc-400">
                             <Loader2 className="w-5 h-5 animate-spin" />
-                            <span className="text-sm">Loading logs...</span>
+                            <span className="text-sm">Loading logs…</span>
                         </div>
                     ) : logs.length === 0 ? (
                         <div className="text-center py-12">
@@ -433,34 +659,28 @@ export default function IntegrationsTab() {
                                 <Activity className="w-6 h-6 text-zinc-400" />
                             </div>
                             <p className="text-sm font-medium text-zinc-500">No automated messages yet</p>
-                            <p className="text-xs text-zinc-400 mt-1">Messages will appear here when WooCommerce triggers fire</p>
+                            <p className="text-xs text-zinc-400 mt-1">Messages appear here when WooCommerce fires a configured trigger</p>
                         </div>
                     ) : (
-                        logs.map((log) => (
-                            <div key={log._id} className="px-6 py-4 flex items-center justify-between hover:bg-zinc-50/50 transition-colors">
+                        logs.map(log => (
+                            <div key={log._id} className="px-5 py-4 flex items-center justify-between hover:bg-zinc-50/50 transition-colors">
                                 <div className="flex items-center gap-4 min-w-0">
-                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${log.status === 'sent' ? 'bg-emerald-500' :
-                                            log.status === 'failed' ? 'bg-red-500' : 'bg-amber-400'
-                                        }`} />
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${log.status === "sent" ? "bg-emerald-500" : log.status === "failed" ? "bg-red-500" : "bg-amber-400"}`} />
                                     <div className="min-w-0">
-                                        <div className="flex items-center gap-2 mb-0.5">
+                                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                             <Phone className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
                                             <span className="text-sm font-semibold text-zinc-900">+{log.phone}</span>
-                                            <span className="text-xs text-zinc-400">·</span>
+                                            <span className="text-zinc-300">·</span>
                                             <span className="text-xs text-zinc-500 font-mono">{log.templateName}</span>
                                         </div>
-                                        {log.errorMessage && (
-                                            <p className="text-xs text-red-500 truncate">{log.errorMessage}</p>
-                                        )}
-                                        {log.messageId && (
-                                            <p className="text-xs text-zinc-400 font-mono truncate">ID: {log.messageId}</p>
-                                        )}
+                                        {log.errorMessage && <p className="text-xs text-red-500 truncate">{log.errorMessage}</p>}
+                                        {log.messageId && <p className="text-xs text-zinc-400 font-mono truncate">ID: {log.messageId}</p>}
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-                                    <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${log.status === 'sent' ? 'bg-emerald-50 text-emerald-700' :
-                                            log.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
-                                        }`}>{log.status}</span>
+                                    <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${log.status === "sent" ? "bg-emerald-50 text-emerald-700" : log.status === "failed" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>
+                                        {log.status}
+                                    </span>
                                     <div className="flex items-center gap-1.5 text-xs text-zinc-400">
                                         <Clock className="w-3.5 h-3.5" />
                                         {new Date(log.createdAt).toLocaleString()}
