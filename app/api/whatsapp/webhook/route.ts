@@ -50,7 +50,8 @@ export async function POST(req: NextRequest) {
 
                 // ── Handle incoming messages ────────────────────────────────
                 for (const msg of value?.messages ?? []) {
-                    const contactPhone = msg.from; // sender's phone (E.164)
+                    // normalize phone number (strip + and spaces)
+                    const contactPhone = msg.from?.replace(/[\+\s\-]/g, "") || "";
                     const wamId = msg.id;
                     const ts = new Date(parseInt(msg.timestamp) * 1000);
 

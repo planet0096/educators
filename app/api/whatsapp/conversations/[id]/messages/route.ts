@@ -71,17 +71,20 @@ export async function POST(
         // Build the Meta API payload
         let metaPayload: Record<string, unknown>;
 
+        // Normalize phone number for sending (ensure E.164 without + if API expects it, Meta Cloud API expects numeric string with country code)
+        const sendToPhone = (conversation.contactPhone || "").replace(/[\+\s\-]/g, "");
+
         if (type === "text") {
             metaPayload = {
                 messaging_product: "whatsapp",
-                to: conversation.contactPhone,
+                to: sendToPhone,
                 type: "text",
                 text: { body: text }
             };
         } else if (type === "template") {
             metaPayload = {
                 messaging_product: "whatsapp",
-                to: conversation.contactPhone,
+                to: sendToPhone,
                 type: "template",
                 template: {
                     name: templateName,
