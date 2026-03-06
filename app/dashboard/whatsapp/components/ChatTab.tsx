@@ -127,26 +127,42 @@ export default function ChatTab() {
         setSyncLoading(true);
         setSyncResult(null);
         try {
-            // First check debug counts
+            // Check debug counts (unfiltered + filtered)
             const debugRes = await fetch("/api/whatsapp/conversations/sync");
-            const debugData = await debugRes.json();
+            const d = await debugRes.json();
 
-            if (debugData.chatMessageCount === 0 && debugData.conversationCount === 0) {
-                setSyncResult(`DB is empty — No ChatMessage or Conversation documents found for your account (educatorId: ${debugData.educatorId}). Messages from WooCommerce triggers are in a separate AutomatedMessage collection and won't appear here. To see messages here, customers need to send you a message via WhatsApp.`);
-                return;
+            const totalMsgs = d.total?.chatMessageCount ?? d.chatMessageCount ?? 0;
+            const totalConvs = d.total?.conversationCount ?? d.conversationCount ?? 0;
+            const filteredMsgs = d.filtered?.chatMessageCount ?? d.chatMessageCount ?? 0;
+            const filteredConvs = d.filtered?.conversationCount ?? d.conversationCount ?? 0;
+
+            let info = `📊 DB Total: ${totalConvs} conversations, ${totalMsgs} messages\n`;
+            info += `🔍 Matched your account (${d.sessionUserId}): ${filteredConvs} conversations, ${filteredMsgs} messages\n`;
+
+            if (d.sampleConversations?.length > 0) {
+                info += `\n📋 Sample Conversation educatorIds:\n`;
+                d.sampleConversations.forEach((c: any) => { info += `  • ${String(c.educatorId)} (phone: ${c.contactPhone})\n`; });
+            }
+            if (d.sampleChatMessages?.length > 0) {
+                info += `\n💬 Sample ChatMessage educatorIds:\n`;
+                d.sampleChatMessages.forEach((m: any) => { info += `  • ${String(m.educatorId)} — "${m.body}"\n`; });
             }
 
-            if (debugData.conversationCount > 0) {
-                setSyncResult(`Found ${debugData.conversationCount} conversation(s) and ${debugData.chatMessageCount} message(s). If inbox still shows empty try refreshing.`);
+            if (totalMsgs === 0 && totalConvs === 0) {
+                info += `\n⚠️ Collections are completely empty. The messages you see in MongoDB might be in the AutomatedMessage collection (WooCommerce), not ChatMessage. Make sure the Meta Webhook is configured to receive inbound messages.`;
+            } else if (filteredConvs > 0) {
+                info += `\n✅ Found matching conversations! Refreshing...`;
                 await fetchConversations();
-                return;
+            } else if (totalConvs > 0 && filteredConvs === 0) {
+                info += `\n⚠️ Data exists but educatorId MISMATCH detected above. The ID in DB doesn't match your session ID. Attempting sync...`;
+                // Try sync repair
+                const syncRes = await fetch("/api/whatsapp/conversations/sync", { method: "POST" });
+                const syncData = await syncRes.json();
+                info += `\n${syncData.message || `Synced ${syncData.synced} conversation(s).`}`;
+                await fetchConversations();
             }
 
-            // Sync ChatMessages → Conversations
-            const syncRes = await fetch("/api/whatsapp/conversations/sync", { method: "POST" });
-            const syncData = await syncRes.json();
-            setSyncResult(syncData.message || `Synced ${syncData.synced} conversation(s) from ${syncData.chatMessagesTotal} messages.`);
-            await fetchConversations();
+            setSyncResult(info);
         } catch (e: any) {
             setSyncResult(`Error: ${e.message}`);
         } finally {

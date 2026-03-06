@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
 }
 
 // GET /api/whatsapp/conversations/sync
-// Debug: returns counts of Conversation and ChatMessage documents
+// Debug: returns ALL counts without filter + filtered counts to diagnose mismatch
 export async function GET(req: NextRequest) {
     try {
         const session = await auth();
@@ -110,20 +110,54 @@ export async function GET(req: NextRequest) {
 
         await dbConnect();
 
-        const educatorId = new mongoose.Types.ObjectId(session.user.id);
+        const sessionId = session.user.id;
 
-        const [convCount, chatMsgCount] = await Promise.all([
-            Conversation.countDocuments({ educatorId }),
-            ChatMessage.countDocuments({ educatorId })
+        // Counts WITH educatorId filter
+        const [convCountFiltered, chatMsgCountFiltered] = await Promise.all([
+            Conversation.countDocuments({ educatorId: sessionId }),
+            ChatMessage.countDocuments({ educatorId: sessionId })
         ]);
 
-        const conversations = await Conversation.find({ educatorId }).sort({ lastMessageAt: -1 }).lean();
+        // Counts WITHOUT filter (all docs in collection)
+        const [convCountAll, chatMsgCountAll] = await Promise.all([
+            Conversation.countDocuments({}),
+            ChatMessage.countDocuments({})
+        ]);
+
+        // Sample first 3 ChatMessage docs (unfiltered) to see what educatorId is stored
+        const sampleMessages = await ChatMessage.find({}).limit(3).lean();
+        const sampleConvs = await Conversation.find({}).limit(3).lean();
+
+        // Also get conversations matching session user
+        const conversations = await Conversation.find({ educatorId: sessionId }).sort({ lastMessageAt: -1 }).lean();
 
         return NextResponse.json({
             success: true,
-            educatorId: session.user.id,
-            conversationCount: convCount,
-            chatMessageCount: chatMsgCount,
+            sessionUserId: sessionId,
+            filtered: {
+                conversationCount: convCountFiltered,
+                chatMessageCount: chatMsgCountFiltered,
+            },
+            total: {
+                conversationCount: convCountAll,
+                chatMessageCount: chatMsgCountAll,
+            },
+            sampleChatMessages: sampleMessages.map(m => ({
+                _id: m._id,
+                educatorId: m.educatorId,
+                direction: m.direction,
+                body: m.body?.slice(0, 50),
+                timestamp: m.timestamp
+            })),
+            sampleConversations: sampleConvs.map(c => ({
+                _id: c._id,
+                educatorId: c.educatorId,
+                contactPhone: c.contactPhone,
+                lastMessage: c.lastMessage?.slice(0, 50)
+            })),
+            // For backward compat with ChatTab
+            conversationCount: convCountFiltered,
+            chatMessageCount: chatMsgCountFiltered,
             conversations
         });
 

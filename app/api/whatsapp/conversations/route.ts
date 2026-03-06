@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import dbConnect from "@/lib/db";
 import Conversation from "@/models/Conversation";
+import mongoose from "mongoose";
 
 // GET /api/whatsapp/conversations
 // Returns all conversations sorted by most recent message
@@ -17,8 +18,17 @@ export async function GET(req: NextRequest) {
         const { searchParams } = req.nextUrl;
         const status = searchParams.get("status") || "open";
 
+        // Match by both ObjectId and string forms to handle type mismatches
+        let educatorIdQuery: any;
+        try {
+            const oid = new mongoose.Types.ObjectId(session.user.id);
+            educatorIdQuery = { $in: [oid, session.user.id] };
+        } catch {
+            educatorIdQuery = session.user.id;
+        }
+
         const conversations = await Conversation.find({
-            educatorId: session.user.id,
+            educatorId: educatorIdQuery,
             status
         })
             .sort({ lastMessageAt: -1 })
