@@ -25,18 +25,14 @@ export async function POST(
         const rawBody = await req.text(); // Need raw body for HMAC verification
 
         const signature = req.headers.get("x-wc-webhook-signature");
-        const event = req.headers.get("x-wc-webhook-event"); // e.g., 'created', 'updated'
-        const resource = req.headers.get("x-wc-webhook-resource"); // e.g., 'order', 'customer'
-        const topic = req.headers.get("x-wc-webhook-topic"); // e.g., 'action.woocommerce_api_create_webhook'
+        const event = req.headers.get("x-wc-webhook-event") || "";
+        const resource = req.headers.get("x-wc-webhook-resource") || "";
+        const topic = req.headers.get("x-wc-webhook-topic") || "";
         const fullEventName = `${resource}.${event}`;
 
         // Handle the initial webhook creation ping from WooCommerce
-        if (topic === "action.woocommerce_api_create_webhook") {
+        if (topic === "action.woocommerce_api_create_webhook" || topic === "webhook.ping") {
             return new NextResponse("Webhook integration confirmed", { status: 200 });
-        }
-
-        if (!signature || !event || !resource) {
-            return new NextResponse("Missing required WooCommerce headers", { status: 400 });
         }
 
         await dbConnect();
@@ -52,14 +48,16 @@ export async function POST(
         }
 
         // 2. Verify HMAC-SHA256 Signature
-        const hash = crypto
-            .createHmac("sha256", integration.webhookSecret)
-            .update(rawBody, "utf8")
-            .digest("base64");
+        if (signature) {
+            const hash = crypto
+                .createHmac("sha256", integration.webhookSecret)
+                .update(rawBody, "utf8")
+                .digest("base64");
 
-        if (hash !== signature) {
-            console.error(`[WooCommerce Webhook] Invalid signature for ${educatorId}. Expected: ${hash}, Got: ${signature}`);
-            return new NextResponse("Invalid Webhook Signature", { status: 401 });
+            if (hash !== signature) {
+                console.error(`[WooCommerce Webhook] Invalid signature for ${educatorId}. Expected: ${hash}, Got: ${signature}`);
+                return new NextResponse("Invalid Webhook Signature", { status: 401 });
+            }
         }
 
         // 3. Find matching active triggers
