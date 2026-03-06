@@ -99,16 +99,60 @@ export default function ChatTab() {
     const pollingRef = useRef<NodeJS.Timeout | null>(null);
     const convPollingRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Debug / sync
+    const [syncLoading, setSyncLoading] = useState(false);
+    const [syncResult, setSyncResult] = useState<string | null>(null);
+    const [fetchError, setFetchError] = useState<string | null>(null);
+
     // ── Fetch conversations ──────────────────────────────────────────────────
     const fetchConversations = useCallback(async () => {
         try {
             const res = await fetch("/api/whatsapp/conversations");
             const data = await res.json();
-            if (data.success) setConversations(data.conversations);
+            if (data.success) {
+                setConversations(data.conversations);
+                setFetchError(null);
+            } else {
+                setFetchError(data.error || "Unknown error");
+            }
+        } catch (e: any) {
+            setFetchError(e.message);
         } finally {
             setConvLoading(false);
         }
     }, []);
+
+    // ── Sync Conversations from ChatMessages ─────────────────────────────────
+    const handleSync = async () => {
+        setSyncLoading(true);
+        setSyncResult(null);
+        try {
+            // First check debug counts
+            const debugRes = await fetch("/api/whatsapp/conversations/sync");
+            const debugData = await debugRes.json();
+
+            if (debugData.chatMessageCount === 0 && debugData.conversationCount === 0) {
+                setSyncResult(`DB is empty — No ChatMessage or Conversation documents found for your account (educatorId: ${debugData.educatorId}). Messages from WooCommerce triggers are in a separate AutomatedMessage collection and won't appear here. To see messages here, customers need to send you a message via WhatsApp.`);
+                return;
+            }
+
+            if (debugData.conversationCount > 0) {
+                setSyncResult(`Found ${debugData.conversationCount} conversation(s) and ${debugData.chatMessageCount} message(s). If inbox still shows empty try refreshing.`);
+                await fetchConversations();
+                return;
+            }
+
+            // Sync ChatMessages → Conversations
+            const syncRes = await fetch("/api/whatsapp/conversations/sync", { method: "POST" });
+            const syncData = await syncRes.json();
+            setSyncResult(syncData.message || `Synced ${syncData.synced} conversation(s) from ${syncData.chatMessagesTotal} messages.`);
+            await fetchConversations();
+        } catch (e: any) {
+            setSyncResult(`Error: ${e.message}`);
+        } finally {
+            setSyncLoading(false);
+        }
+    };
 
     // ── Fetch messages for active conv ───────────────────────────────────────
     const fetchMessages = useCallback(async (convId: string, silent = false) => {
@@ -280,10 +324,30 @@ export default function ChatTab() {
                             <span className="text-sm">Loading chats…</span>
                         </div>
                     ) : filtered.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-48 text-center px-6">
-                            <MessageSquare className="w-10 h-10 text-zinc-200 mb-3" />
-                            <p className="text-sm font-medium text-zinc-400">No conversations yet</p>
-                            <p className="text-xs text-zinc-300 mt-1">Messages will appear here when customers contact you</p>
+                        <div className="flex flex-col items-center justify-center py-8 text-center px-5 gap-4">
+                            <MessageSquare className="w-10 h-10 text-zinc-200" />
+                            <div>
+                                <p className="text-sm font-medium text-zinc-500">No conversations yet</p>
+                                <p className="text-xs text-zinc-400 mt-1">Messages appear here when customers WhatsApp you directly</p>
+                            </div>
+                            {fetchError && (
+                                <div className="text-xs text-red-500 bg-red-50 border border-red-100 rounded-lg px-3 py-2 w-full text-left">
+                                    ⚠️ API error: {fetchError}
+                                </div>
+                            )}
+                            <button
+                                onClick={handleSync}
+                                disabled={syncLoading}
+                                className="flex items-center gap-2 bg-zinc-800 text-white text-xs font-medium px-4 py-2 rounded-xl hover:bg-zinc-700 transition-colors disabled:opacity-60"
+                            >
+                                {syncLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                {syncLoading ? "Checking DB…" : "Diagnose & Sync"}
+                            </button>
+                            {syncResult && (
+                                <div className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-xl px-3 py-3 text-left leading-relaxed w-full">
+                                    {syncResult}
+                                </div>
+                            )}
                         </div>
                     ) : (
                         filtered.map(conv => (
@@ -402,8 +466,8 @@ export default function ChatTab() {
                                             )}
                                             <div className={`flex ${isOut ? "justify-end" : "justify-start"} mb-0.5`}>
                                                 <div className={`relative max-w-[70%] md:max-w-[60%] px-3 py-2 rounded-2xl shadow-sm ${isOut
-                                                        ? "bg-[#d9fdd3] rounded-tr-sm text-zinc-900"
-                                                        : "bg-white rounded-tl-sm text-zinc-900"
+                                                    ? "bg-[#d9fdd3] rounded-tr-sm text-zinc-900"
+                                                    : "bg-white rounded-tl-sm text-zinc-900"
                                                     }`}>
                                                     {/* Template badge */}
                                                     {msg.type === "template" && msg.templateName && (
