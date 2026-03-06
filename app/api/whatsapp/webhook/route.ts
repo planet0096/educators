@@ -3,6 +3,7 @@ import dbConnect from "@/lib/db";
 import WhatsAppConfig from "@/models/WhatsAppConfig";
 import Conversation from "@/models/Conversation";
 import ChatMessage from "@/models/ChatMessage";
+import WebhookLog from "@/models/WebhookLog";
 
 // ─── GET: Meta webhook verification ──────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -25,6 +26,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
+
+        await dbConnect();
+
+        // Log the raw payload
+        let logId: string | null = null;
+        try {
+            const logDoc = await WebhookLog.create({ payload: body });
+            logId = logDoc._id.toString();
+        } catch (e) {
+            console.error("Failed to save WebhookLog", e);
+        }
 
         // Quickly ACK Meta — must return 200 within 20s
         // We process asynchronously below
@@ -126,6 +138,12 @@ export async function POST(req: NextRequest) {
 
     } catch (error: any) {
         console.error("[WhatsApp Webhook Error]:", error);
+
+        try {
+            await dbConnect();
+            await WebhookLog.create({ error: error.message, payload: { error: "Caught in outer catch" } });
+        } catch (e) { }
+
         // Always return 200 so Meta doesn't disable the webhook
         return NextResponse.json({ success: false }, { status: 200 });
     }
