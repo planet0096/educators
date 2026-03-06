@@ -27,7 +27,13 @@ export async function POST(
         const signature = req.headers.get("x-wc-webhook-signature");
         const event = req.headers.get("x-wc-webhook-event"); // e.g., 'created', 'updated'
         const resource = req.headers.get("x-wc-webhook-resource"); // e.g., 'order', 'customer'
+        const topic = req.headers.get("x-wc-webhook-topic"); // e.g., 'action.woocommerce_api_create_webhook'
         const fullEventName = `${resource}.${event}`;
+
+        // Handle the initial webhook creation ping from WooCommerce
+        if (topic === "action.woocommerce_api_create_webhook") {
+            return new NextResponse("Webhook integration confirmed", { status: 200 });
+        }
 
         if (!signature || !event || !resource) {
             return new NextResponse("Missing required WooCommerce headers", { status: 400 });
