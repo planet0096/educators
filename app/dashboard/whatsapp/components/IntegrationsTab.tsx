@@ -197,6 +197,54 @@ export default function IntegrationsTab() {
     const [newTemplate, setNewTemplate] = useState("");
     const [newMappings, setNewMappings] = useState<Record<string, string>>({});
 
+    // Auto-setup state
+    const ALL_TOPICS_LIST = [
+        { topic: "order.created", label: "Order Created" },
+        { topic: "order.updated", label: "Order Updated" },
+        { topic: "customer.created", label: "Customer Created" },
+        { topic: "customer.updated", label: "Customer Updated" },
+        { topic: "product.created", label: "Product Created" },
+        { topic: "product.updated", label: "Product Updated" },
+        { topic: "coupon.created", label: "Coupon Created" },
+        { topic: "coupon.updated", label: "Coupon Updated" },
+    ];
+    const [showAutoSetup, setShowAutoSetup] = useState(false);
+    const [wcStoreUrl, setWcStoreUrl] = useState("");
+    const [wcConsumerKey, setWcConsumerKey] = useState("");
+    const [wcConsumerSecret, setWcConsumerSecret] = useState("");
+    const [selectedTopics, setSelectedTopics] = useState<string[]>(ALL_TOPICS_LIST.map(t => t.topic));
+    const [autoSetupLoading, setAutoSetupLoading] = useState(false);
+    const [autoSetupResult, setAutoSetupResult] = useState<{ topic: string; status: string; error?: string }[] | null>(null);
+
+    const toggleTopic = (topic: string) => {
+        setSelectedTopics(prev =>
+            prev.includes(topic) ? prev.filter(t => t !== topic) : [...prev, topic]
+        );
+    };
+
+    const handleAutoSetup = async () => {
+        if (!wcStoreUrl || !wcConsumerKey || !wcConsumerSecret) return;
+        setAutoSetupLoading(true);
+        setAutoSetupResult(null);
+        try {
+            const res = await fetch("/api/whatsapp/integrations/woocommerce/setup", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ storeUrl: wcStoreUrl, consumerKey: wcConsumerKey, consumerSecret: wcConsumerSecret, selectedTopics })
+            });
+            const data = await res.json();
+            if (data.success) {
+                setAutoSetupResult(data.results);
+            } else {
+                setAutoSetupResult([{ topic: "error", status: "failed", error: data.error }]);
+            }
+        } catch (err: any) {
+            setAutoSetupResult([{ topic: "error", status: "failed", error: err.message }]);
+        } finally {
+            setAutoSetupLoading(false);
+        }
+    };
+
     useEffect(() => {
         fetchIntegrationAndTemplates();
         fetchLogs();
@@ -387,13 +435,124 @@ export default function IntegrationsTab() {
                 <div className="p-6 space-y-8">
                     {/* Step 1: Webhook Setup */}
                     <div>
-                        <div className="flex items-center gap-3 mb-4">
-                            <span className="w-7 h-7 rounded-full bg-zinc-900 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
-                            <h4 className="text-sm font-bold text-zinc-900 uppercase tracking-wide">Setup Webhook in WooCommerce</h4>
+                        <div className="flex items-center justify-between gap-3 mb-4">
+                            <div className="flex items-center gap-3">
+                                <span className="w-7 h-7 rounded-full bg-zinc-900 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
+                                <h4 className="text-sm font-bold text-zinc-900 uppercase tracking-wide">Connect WooCommerce Webhooks</h4>
+                            </div>
+                            <button
+                                onClick={() => setShowAutoSetup(!showAutoSetup)}
+                                className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-purple-700 transition-colors shadow-sm"
+                            >
+                                {showAutoSetup ? "Hide Auto-Setup" : "⚡ Auto-Create All Webhooks"}
+                            </button>
                         </div>
-                        <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 space-y-4">
+
+                        {/* Auto-Setup Panel */}
+                        {showAutoSetup && (
+                            <div className="bg-purple-50 border border-purple-200 rounded-2xl p-5 mb-4 space-y-5">
+                                <div>
+                                    <h5 className="text-sm font-bold text-purple-900 mb-1">Automatic Webhook Setup</h5>
+                                    <p className="text-xs text-purple-700">Generate WooCommerce API keys at: <strong>WooCommerce → Settings → Advanced → REST API → Add Key</strong>. Set permissions to <strong>Read/Write</strong>.</p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-purple-800 uppercase tracking-wide">Store URL</label>
+                                        <input
+                                            type="url"
+                                            value={wcStoreUrl}
+                                            onChange={e => setWcStoreUrl(e.target.value)}
+                                            placeholder="https://yourstore.com"
+                                            className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-purple-400/20 focus:border-purple-500 shadow-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-purple-800 uppercase tracking-wide">Consumer Key</label>
+                                        <input
+                                            type="text"
+                                            value={wcConsumerKey}
+                                            onChange={e => setWcConsumerKey(e.target.value)}
+                                            placeholder="ck_xxxxxxxxxxxx"
+                                            className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2.5 text-sm text-zinc-900 font-mono focus:outline-none focus:ring-2 focus:ring-purple-400/20 focus:border-purple-500 shadow-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-bold text-purple-800 uppercase tracking-wide">Consumer Secret</label>
+                                        <input
+                                            type="password"
+                                            value={wcConsumerSecret}
+                                            onChange={e => setWcConsumerSecret(e.target.value)}
+                                            placeholder="cs_xxxxxxxxxxxx"
+                                            className="w-full bg-white border border-purple-200 rounded-xl px-3 py-2.5 text-sm text-zinc-900 font-mono focus:outline-none focus:ring-2 focus:ring-purple-400/20 focus:border-purple-500 shadow-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Topic Checkboxes */}
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-xs font-bold text-purple-800 uppercase tracking-wide">Webhook Topics to Create</label>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => setSelectedTopics(ALL_TOPICS_LIST.map(t => t.topic))} className="text-xs text-purple-700 hover:text-purple-900 font-medium">Select All</button>
+                                            <span className="text-purple-300">·</span>
+                                            <button onClick={() => setSelectedTopics([])} className="text-xs text-purple-700 hover:text-purple-900 font-medium">Clear All</button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                        {ALL_TOPICS_LIST.map(t => (
+                                            <label key={t.topic} className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer text-xs font-medium transition-all ${selectedTopics.includes(t.topic)
+                                                    ? "bg-purple-100 border-purple-300 text-purple-900"
+                                                    : "bg-white border-purple-100 text-zinc-400 hover:border-purple-200"
+                                                }`}>
+                                                <input
+                                                    type="checkbox"
+                                                    className="accent-purple-600"
+                                                    checked={selectedTopics.includes(t.topic)}
+                                                    onChange={() => toggleTopic(t.topic)}
+                                                />
+                                                {t.label}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={handleAutoSetup}
+                                        disabled={autoSetupLoading || !wcStoreUrl || !wcConsumerKey || !wcConsumerSecret || selectedTopics.length === 0}
+                                        className="bg-purple-700 text-white px-6 py-2.5 rounded-xl text-sm font-medium hover:bg-purple-800 transition-colors flex items-center gap-2 disabled:opacity-60 shadow-sm"
+                                    >
+                                        {autoSetupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>⚡</span>}
+                                        {autoSetupLoading ? "Creating Webhooks…" : `Create ${selectedTopics.length} Webhooks in WooCommerce`}
+                                    </button>
+                                </div>
+
+                                {/* Results */}
+                                {autoSetupResult && (
+                                    <div className="space-y-2">
+                                        <h6 className="text-xs font-bold text-purple-800 uppercase tracking-wide">Results</h6>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                            {autoSetupResult.map((r, i) => (
+                                                <div key={i} className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border ${r.status === "created"
+                                                        ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                                                        : "bg-red-50 border-red-200 text-red-700"
+                                                    }`}>
+                                                    <span>{r.status === "created" ? "✅" : "❌"}</span>
+                                                    <span className="truncate">{r.topic}</span>
+                                                    {r.error && <span className="truncate text-red-500" title={r.error}>({r.error})</span>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Manual Fallback */}
+                        <div className="bg-zinc-50 border border-zinc-100 rounded-xl p-4 space-y-3">
                             <p className="text-sm text-zinc-600">
-                                In your WordPress admin, go to <strong>WooCommerce &gt; Settings &gt; Advanced &gt; Webhooks</strong>, click <strong>Add Webhook</strong>, set Topic to <strong>Order created</strong>, and paste this Delivery URL:
+                                <span className="font-medium text-zinc-800">Manual setup:</span> In WordPress go to <strong>WooCommerce → Settings → Advanced → Webhooks</strong>, copy this URL as the Delivery URL:
                             </p>
                             <div className="flex items-center gap-2">
                                 <code className="flex-1 bg-white border border-zinc-200 rounded-lg px-3 py-2.5 text-xs font-mono text-zinc-700 truncate shadow-sm">
