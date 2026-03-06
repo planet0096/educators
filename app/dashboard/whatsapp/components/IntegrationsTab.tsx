@@ -1,6 +1,16 @@
 import { useState, useEffect, FormEvent } from "react";
-import { Plug, Save, Copy, CheckCircle2, RefreshCw, Plus, Store, KeyRound, AlertCircle, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Plug, Save, Copy, CheckCircle2, RefreshCw, Plus, Store, KeyRound, AlertCircle, X, ChevronDown, ChevronUp, Activity, Phone, Clock, Send, Loader2 } from "lucide-react";
 import { WhatsAppTemplate } from "@/models/WhatsAppTemplateTypes";
+
+interface AutomatedLog {
+    _id: string;
+    phone: string;
+    templateName: string;
+    status: 'pending' | 'sent' | 'failed';
+    errorMessage?: string;
+    messageId?: string;
+    createdAt: string;
+}
 
 interface WooCommerceIntegration {
     _id: string;
@@ -17,6 +27,12 @@ export default function IntegrationsTab() {
     const [saving, setSaving] = useState(false);
     const [copied, setCopied] = useState(false);
 
+    // Logs state
+    const [logs, setLogs] = useState<AutomatedLog[]>([]);
+    const [logsLoading, setLogsLoading] = useState(false);
+    const [processing, setProcessing] = useState(false);
+    const [processResult, setProcessResult] = useState<string | null>(null);
+
     // Form state
     const [isEnabled, setIsEnabled] = useState(false);
     const [webhookSecret, setWebhookSecret] = useState("");
@@ -30,7 +46,40 @@ export default function IntegrationsTab() {
 
     useEffect(() => {
         fetchIntegrationAndTemplates();
+        fetchLogs();
     }, []);
+
+    const fetchLogs = async () => {
+        setLogsLoading(true);
+        try {
+            const res = await fetch("/api/whatsapp/automations/logs?limit=20");
+            const data = await res.json();
+            if (data.success) setLogs(data.messages || []);
+        } catch (err) {
+            console.error("Failed to load logs", err);
+        } finally {
+            setLogsLoading(false);
+        }
+    };
+
+    const handleProcessNow = async () => {
+        setProcessing(true);
+        setProcessResult(null);
+        try {
+            const res = await fetch("/api/whatsapp/automations/process", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+            const data = await res.json();
+            if (data.success) {
+                setProcessResult(`Processed ${data.processed} messages — ${data.sent} sent, ${data.failed} failed.`);
+                await fetchLogs();
+            } else {
+                setProcessResult(data.error || "Unknown error");
+            }
+        } catch (err) {
+            setProcessResult("Failed to call processor.");
+        } finally {
+            setProcessing(false);
+        }
+    };
 
     const fetchIntegrationAndTemplates = async () => {
         setLoading(true);
@@ -341,13 +390,87 @@ export default function IntegrationsTab() {
                     </div>
                 </div>
             </div>
+
+            {/* Automated Message Logs */}
+            <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-emerald-100 p-2.5 rounded-xl">
+                            <Activity className="w-5 h-5 text-emerald-700" />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-bold text-zinc-900">Automated Message Logs</h3>
+                            <p className="text-xs text-zinc-500 mt-0.5">Recent messages triggered by WooCommerce events</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {processResult && (
+                            <span className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 px-3 py-1.5 rounded-lg">{processResult}</span>
+                        )}
+                        <button
+                            onClick={handleProcessNow}
+                            disabled={processing}
+                            className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-70 shadow-sm"
+                        >
+                            {processing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                            Process Now
+                        </button>
+                        <button onClick={fetchLogs} className="p-2 hover:bg-zinc-100 rounded-xl transition-colors" title="Refresh">
+                            <RefreshCw className={`w-4 h-4 text-zinc-400 ${logsLoading ? 'animate-spin' : ''}`} />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="divide-y divide-zinc-100">
+                    {logsLoading ? (
+                        <div className="flex items-center justify-center py-10 gap-3 text-zinc-400">
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <span className="text-sm">Loading logs...</span>
+                        </div>
+                    ) : logs.length === 0 ? (
+                        <div className="text-center py-12">
+                            <div className="w-12 h-12 bg-zinc-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <Activity className="w-6 h-6 text-zinc-400" />
+                            </div>
+                            <p className="text-sm font-medium text-zinc-500">No automated messages yet</p>
+                            <p className="text-xs text-zinc-400 mt-1">Messages will appear here when WooCommerce triggers fire</p>
+                        </div>
+                    ) : (
+                        logs.map((log) => (
+                            <div key={log._id} className="px-6 py-4 flex items-center justify-between hover:bg-zinc-50/50 transition-colors">
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${log.status === 'sent' ? 'bg-emerald-500' :
+                                            log.status === 'failed' ? 'bg-red-500' : 'bg-amber-400'
+                                        }`} />
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2 mb-0.5">
+                                            <Phone className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
+                                            <span className="text-sm font-semibold text-zinc-900">+{log.phone}</span>
+                                            <span className="text-xs text-zinc-400">·</span>
+                                            <span className="text-xs text-zinc-500 font-mono">{log.templateName}</span>
+                                        </div>
+                                        {log.errorMessage && (
+                                            <p className="text-xs text-red-500 truncate">{log.errorMessage}</p>
+                                        )}
+                                        {log.messageId && (
+                                            <p className="text-xs text-zinc-400 font-mono truncate">ID: {log.messageId}</p>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+                                    <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${log.status === 'sent' ? 'bg-emerald-50 text-emerald-700' :
+                                            log.status === 'failed' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                                        }`}>{log.status}</span>
+                                    <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                                        <Clock className="w-3.5 h-3.5" />
+                                        {new Date(log.createdAt).toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
-
-// Dummy Loader2 because lucide-react might not export it directly here if missing in package.json
-const Loader2 = ({ className }: { className?: string }) => (
-    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-    </svg>
-);

@@ -122,10 +122,24 @@ export async function POST(
         if (messagesToQueue.length > 0) {
             await AutomatedMessage.insertMany(messagesToQueue);
             console.log(`[WooCommerce Webhook] Queued ${messagesToQueue.length} automated messages for ${educatorId}`);
+
+            // Fire-and-forget: Trigger the queue processor without waiting for it.
+            // This ensures messages are sent almost instantly while we return 200 to WooCommerce immediately.
+            const processorUrl = `${req.nextUrl.origin}/api/whatsapp/automations/process`;
+            fetch(processorUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    // Forward the original cookies so auth() can extract the session
+                    "Cookie": req.headers.get("cookie") || ""
+                },
+                body: JSON.stringify({ educatorId })
+            }).catch((err) => {
+                console.error("[WooCommerce Webhook] Failed to trigger automation processor:", err.message);
+            });
         }
 
         // Return 200 immediately so WooCommerce doesn't retry
-        // The Queue processor (`/api/whatsapp/campaigns/process/route.ts`) or a new automated processor will pick these up.
         return new NextResponse("Webhook processed successfully", { status: 200 });
 
     } catch (error: any) {
