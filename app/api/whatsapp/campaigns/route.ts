@@ -4,6 +4,9 @@ import dbConnect from "@/lib/db";
 import Campaign from "@/models/Campaign";
 import CampaignMessage from "@/models/CampaignMessage";
 import Contact from "@/models/Contact";
+import { Client } from "@upstash/qstash";
+
+const qstash = new Client({ token: process.env.QSTASH_TOKEN || "" });
 
 export async function GET(req: Request) {
     try {
@@ -123,7 +126,33 @@ export async function POST(req: Request) {
         });
 
         // 4. Bulk insert into CampaignMessage queue
-        await CampaignMessage.insertMany(queueMessages);
+        const insertedMessages = await CampaignMessage.insertMany(queueMessages);
+
+        // 5. Mark campaign as running immediately
+        newCampaign.status = "running";
+        await newCampaign.save();
+
+        // 6. Dispatch each individual message as a QStash job
+        // Each job is fully independent: one contact failing does NOT block others.
+        // QStash will retry failed send attempts automatically with exponential backoff.
+        if (process.env.QSTASH_TOKEN) {
+            const consumerUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/whatsapp/campaigns/queue`;
+
+            const batchPublishes = insertedMessages.map((msg: any) =>
+                qstash.publishJSON({
+                    url: consumerUrl,
+                    body: { campaignMessageId: msg._id.toString() },
+                    retries: 2,
+                    // Stagger messages: add a small delay per contact to respect Meta's rate limits
+                    delay: Math.floor(insertedMessages.indexOf(msg) / 10), // 1 second per 10 contacts
+                })
+            );
+
+            await Promise.allSettled(batchPublishes);
+            console.log(`[Campaign] Dispatched ${insertedMessages.length} jobs to QStash for campaign ${newCampaign._id}`);
+        } else {
+            console.warn("⚠️ QSTASH_TOKEN missing. Campaign messages saved as pending but will not be sent automatically.");
+        }
 
         return NextResponse.json({
             success: true,
