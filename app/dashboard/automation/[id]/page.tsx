@@ -17,13 +17,48 @@ import {
     Panel
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload } from "lucide-react";
+import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload, Wand2 } from "lucide-react";
 import toast from "react-hot-toast";
+import dagre from "dagre";
 
 import { nodeTypes } from "./components/CustomNodes";
 
 // Helper to generate simple random IDs without relying on crypto inside React Component
 const generateId = () => Math.random().toString(36).substr(2, 9);
+
+const dagreGraph = new dagre.graphlib.Graph();
+dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+const nodeWidth = 320;
+const nodeHeight = 250;
+
+const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'TB') => {
+    dagreGraph.setGraph({ rankdir: direction });
+
+    nodes.forEach((node) => {
+        dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+    });
+
+    edges.forEach((edge) => {
+        dagreGraph.setEdge(edge.source, edge.target);
+    });
+
+    dagre.layout(dagreGraph);
+
+    const layoutedNodes = nodes.map((node) => {
+        const nodeWithPosition = dagreGraph.node(node.id);
+        const newNode = { ...node };
+
+        newNode.position = {
+            x: nodeWithPosition.x - nodeWidth / 2,
+            y: nodeWithPosition.y - nodeHeight / 2,
+        };
+
+        return newNode;
+    });
+
+    return { nodes: layoutedNodes, edges };
+};
 
 function FlowBuilderCanvas() {
     const params = useParams();
@@ -196,6 +231,17 @@ function FlowBuilderCanvas() {
         [setEdges]
     );
 
+    const onLayout = useCallback(() => {
+        const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(nodes, edges);
+        setNodes([...layoutedNodes]);
+        setEdges([...layoutedEdges]);
+        setTimeout(() => {
+            if (reactFlowInstance) {
+                reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
+            }
+        }, 50);
+    }, [nodes, edges, reactFlowInstance, setNodes, setEdges]);
+
     const onDragOver = useCallback((event: React.DragEvent) => {
         event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
@@ -256,6 +302,14 @@ function FlowBuilderCanvas() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={onLayout}
+                        className="px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
+                    >
+                        <Wand2 className="w-4 h-4" />
+                        Magic Arrange
+                    </button>
+
                     <button
                         onClick={handleOpenJsonModal}
                         className="px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
