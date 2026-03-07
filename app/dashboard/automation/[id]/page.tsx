@@ -17,7 +17,7 @@ import {
     Panel
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2 } from "lucide-react";
+import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { nodeTypes } from "./components/CustomNodes";
@@ -38,7 +38,10 @@ function FlowBuilderCanvas() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-
+    // Debug panel state
+    const [showDebug, setShowDebug] = useState(false);
+    const [sessions, setSessions] = useState<any[]>([]);
+    const [loadingSessions, setLoadingSessions] = useState(false);
 
     // Note: We need a ref to access the latest state inside the callback if needed
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -90,6 +93,22 @@ function FlowBuilderCanvas() {
             toast.error("Failed to load flow");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchSessions = async () => {
+        setLoadingSessions(true);
+        try {
+            const res = await fetch(`/api/automation/flows/${flowId}/sessions`);
+            const data = await res.json();
+            if (data.success) {
+                setSessions(data.sessions || []);
+            }
+        } catch (e) {
+            console.error("Failed to fetch sessions", e);
+            toast.error("Failed to load debug logs");
+        } finally {
+            setLoadingSessions(false);
         }
     };
 
@@ -201,14 +220,27 @@ function FlowBuilderCanvas() {
                     </div>
                 </div>
 
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-70 flex items-center gap-2"
-                >
-                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    Save Flow
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => {
+                            setShowDebug(!showDebug);
+                            if (!showDebug) fetchSessions();
+                        }}
+                        className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 ${showDebug ? 'bg-indigo-100 text-indigo-700' : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'}`}
+                    >
+                        <Activity className="w-4 h-4" />
+                        {showDebug ? "Hide Logs" : "Live Logs"}
+                    </button>
+
+                    <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="bg-indigo-600 text-white px-5 py-2 rounded-xl text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-70 flex items-center gap-2"
+                    >
+                        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Save Flow
+                    </button>
+                </div>
             </div>
 
             {/* Main Area */}
@@ -301,6 +333,51 @@ function FlowBuilderCanvas() {
                         <Controls className="bg-white shadow-md border border-zinc-200 rounded-lg overflow-hidden fill-zinc-600" />
                         {/* <MiniMap className="bg-white shadow-lg rounded-xl border border-zinc-200" zoomable pannable /> */}
                     </ReactFlow>
+
+                    {/* Debug sidebar overlaid on React flow canvas */}
+                    {showDebug && (
+                        <div className="absolute top-4 right-4 bottom-4 w-80 bg-white border border-zinc-200 rounded-2xl flex flex-col z-[100] shadow-2xl overflow-hidden">
+                            <div className="p-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50 shrink-0">
+                                <h3 className="font-bold text-sm text-zinc-900 flex items-center gap-2">
+                                    <Activity className="w-4 h-4 text-indigo-500" />
+                                    Live Execution Logs
+                                </h3>
+                                <button onClick={fetchSessions} disabled={loadingSessions} className="p-1.5 hover:bg-zinc-200 rounded-lg text-zinc-500 transition-colors disabled:opacity-50">
+                                    <RefreshCw className={`w-4 h-4 ${loadingSessions ? 'animate-spin' : ''}`} />
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-zinc-50/50">
+                                {sessions.length === 0 ? (
+                                    <div className="text-center text-zinc-500 text-sm py-8 flex flex-col items-center gap-2">
+                                        <Activity className="w-8 h-8 text-zinc-300" />
+                                        <p>No execution logs yet.</p>
+                                        <p className="text-xs text-zinc-400">Test your flow on WhatsApp to see live data here.</p>
+                                    </div>
+                                ) : (
+                                    sessions.map(sess => (
+                                        <div key={sess._id} className="border border-zinc-200 rounded-xl p-3 text-sm shadow-sm bg-white hover:border-indigo-200 transition-colors">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <span className="font-semibold text-zinc-900 border border-zinc-200 px-2 py-0.5 rounded-md text-xs bg-zinc-50">+{sess.contactPhone}</span>
+                                                <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${sess.status === 'active' ? 'bg-amber-100 text-amber-700 border border-amber-200' : sess.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                                    {sess.status}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-zinc-600 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-medium text-zinc-500">Node</span>
+                                                    <span className="font-mono text-[10px] bg-zinc-100 px-1.5 py-0.5 rounded text-zinc-700 truncate max-w-[150px]" title={sess.currentNodeId}>{sess.currentNodeId}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center pt-2 border-t border-zinc-100">
+                                                    <span className="text-[10px] text-zinc-400">Last updated</span>
+                                                    <span className="text-[10px] text-zinc-500 font-medium">{new Date(sess.updatedAt).toLocaleTimeString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
