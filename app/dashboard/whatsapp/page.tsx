@@ -455,6 +455,16 @@ export default function WhatsAppPage() {
                     <Settings className="w-4 h-4" />
                     Configuration
                 </button>
+                <button
+                    onClick={() => setActiveTab("test")}
+                    className={`flex items-center gap-2 px-6 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === "test"
+                        ? "border-emerald-600 text-emerald-700"
+                        : "border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300"
+                        } `}
+                >
+                    <Send className="w-4 h-4" />
+                    Test Message
+                </button>
                 <div className="w-px h-6 bg-zinc-200 self-center mx-2 hidden md:block"></div>
                 <button
                     onClick={() => setActiveTab("campaigns")}
