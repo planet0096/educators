@@ -4,6 +4,7 @@ import dbConnect from "@/lib/db";
 import Campaign from "@/models/Campaign";
 import CampaignMessage from "@/models/CampaignMessage";
 import Contact from "@/models/Contact";
+import WhatsAppConfig from "@/models/WhatsAppConfig";
 import { Client } from "@upstash/qstash";
 
 const qstash = new Client({ token: process.env.QSTASH_TOKEN || "" });
@@ -101,10 +102,7 @@ export async function POST(req: Request) {
 
         // 3. Prepare queue messages
         const queueMessages = targetContacts.map(contact => {
-            // Apply personalization directly to the components JSON string
             let personalizedComponentsString = baseComponentsString;
-
-            // Standard system variables replacement
             personalizedComponentsString = personalizedComponentsString.replace(/\{\{CONTACT_NAME\}\}/g, contact.name || "");
             personalizedComponentsString = personalizedComponentsString.replace(/\{\{CONTACT_PHONE\}\}/g, contact.phone || "");
             personalizedComponentsString = personalizedComponentsString.replace(/\{\{CONTACT_EMAIL\}\}/g, contact.email || "");
@@ -132,26 +130,76 @@ export async function POST(req: Request) {
         newCampaign.status = "running";
         await newCampaign.save();
 
-        // 6. Dispatch each individual message as a QStash job
-        // Each job is fully independent: one contact failing does NOT block others.
-        // QStash will retry failed send attempts automatically with exponential backoff.
-        if (process.env.QSTASH_TOKEN) {
-            const consumerUrl = `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/whatsapp/campaigns/queue`;
+        // 6. Dispatch — QStash in production, direct inline processing in local dev
+        const isLocalDev = (process.env.NEXTAUTH_URL || "").includes("localhost");
 
-            const batchPublishes = insertedMessages.map((msg: any) =>
+        if (!isLocalDev && process.env.QSTASH_TOKEN) {
+            // ── PRODUCTION: push each contact as an independent QStash background job ──
+            const consumerUrl = `${process.env.NEXTAUTH_URL}/api/whatsapp/campaigns/queue`;
+            const batchPublishes = (insertedMessages as any[]).map((msg, idx) =>
                 qstash.publishJSON({
                     url: consumerUrl,
                     body: { campaignMessageId: msg._id.toString() },
                     retries: 2,
-                    // Stagger messages: add a small delay per contact to respect Meta's rate limits
-                    delay: Math.floor(insertedMessages.indexOf(msg) / 10), // 1 second per 10 contacts
+                    delay: Math.floor(idx / 10), // 1s delay per 10 contacts — respects Meta rate limits
                 })
             );
-
             await Promise.allSettled(batchPublishes);
-            console.log(`[Campaign] Dispatched ${insertedMessages.length} jobs to QStash for campaign ${newCampaign._id}`);
+            console.log(`[Campaign] Dispatched ${insertedMessages.length} QStash jobs for campaign ${newCampaign._id}`);
         } else {
-            console.warn("⚠️ QSTASH_TOKEN missing. Campaign messages saved as pending but will not be sent automatically.");
+            // ── LOCAL DEV: QStash can't hit localhost, so process inline here ──
+            console.log(`[Campaign] Local dev — processing ${insertedMessages.length} messages directly`);
+            const whatsappConfig = await WhatsAppConfig.findOne({ user: session.user.id });
+
+            if (whatsappConfig?.phoneNumberId && whatsappConfig?.accessToken) {
+                const apiUrl = `https://graph.facebook.com/v19.0/${whatsappConfig.phoneNumberId}/messages`;
+                let successCount = 0;
+                let failCount = 0;
+
+                for (const msg of insertedMessages as any[]) {
+                    try {
+                        const payload: any = {
+                            messaging_product: "whatsapp",
+                            to: msg.phone,
+                            type: "template",
+                            template: {
+                                name: newCampaign.templateName,
+                                language: { code: newCampaign.templateLanguage }
+                            }
+                        };
+                        if (msg.components?.length > 0) payload.template.components = msg.components;
+
+                        const apiRes = await fetch(apiUrl, {
+                            method: "POST",
+                            headers: {
+                                "Authorization": `Bearer ${whatsappConfig.accessToken}`,
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await apiRes.json();
+
+                        if (apiRes.ok && data.messages?.[0]?.id) {
+                            await CampaignMessage.findByIdAndUpdate(msg._id, { status: "sent", messageId: data.messages[0].id });
+                            successCount++;
+                        } else {
+                            await CampaignMessage.findByIdAndUpdate(msg._id, { status: "failed", errorMessage: data.error?.message || "Meta API Error" });
+                            failCount++;
+                        }
+                    } catch (err: any) {
+                        await CampaignMessage.findByIdAndUpdate(msg._id, { status: "failed", errorMessage: err.message });
+                        failCount++;
+                    }
+                }
+
+                newCampaign.status = "completed";
+                newCampaign.successfulSends = successCount;
+                newCampaign.failedSends = failCount;
+                await newCampaign.save();
+                console.log(`[Campaign] Done. Sent: ${successCount}, Failed: ${failCount}`);
+            } else {
+                console.warn("[Campaign] No WhatsApp config found — messages saved as pending.");
+            }
         }
 
         return NextResponse.json({

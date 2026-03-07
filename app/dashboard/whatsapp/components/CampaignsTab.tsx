@@ -55,7 +55,7 @@ export default function CampaignsTab() {
         }
     }, [selectedLists, selectedTags, view]);
 
-    // Live poller for detail view
+    // Live poller for detail view — only polls for UI status updates, NOT for triggering sends
     useEffect(() => {
         let interval: NodeJS.Timeout;
         if (view === "detail" && activeCampaign && (activeCampaign.status === "pending" || activeCampaign.status === "running")) {
@@ -68,18 +68,6 @@ export default function CampaignsTab() {
         }
         return () => clearInterval(interval);
     }, [view, activeCampaign]);
-
-    // Background processor triggering
-    useEffect(() => {
-        let interval: NodeJS.Timeout;
-        if (view === "detail" && activeCampaign && activeCampaign.status === "running") {
-            // Actively request backend to process a batch every 500ms
-            interval = setInterval(() => {
-                triggerProcessBatch(activeCampaign._id);
-            }, 500);
-        }
-        return () => clearInterval(interval);
-    }, [view, activeCampaign?.status]);
 
     const fetchCampaigns = async () => {
         setLoading(true);
@@ -302,11 +290,9 @@ export default function CampaignsTab() {
             const data = await res.json();
 
             if (res.ok && data.success) {
-                // Instantly navigate to detail page to start processing
+                // Navigate to detail page - QStash is already processing in the background
                 setActiveCampaign(data.campaign);
                 setView("detail");
-                // Kick off the queue immediately
-                triggerProcessBatch(data.campaign._id);
             } else {
                 setCreateError(data.error || "Failed to create campaign");
             }
@@ -314,19 +300,6 @@ export default function CampaignsTab() {
             setCreateError("An error occurred");
         } finally {
             setCreating(false);
-        }
-    };
-
-    const triggerProcessBatch = async (campaignId: string) => {
-        try {
-            await fetch("/api/whatsapp/campaigns/process", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ campaignId })
-            });
-            // Result is handled by the data poller to decoupled UI from worker logic
-        } catch (err) {
-            console.error("Queue process triggered failed", err);
         }
     };
 
