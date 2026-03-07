@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, NodeProps, useReactFlow } from "@xyflow/react";
-import { MessageSquare, Zap, Clock, Type, Settings2, Trash2, Plus, X, List } from "lucide-react";
+import { MessageSquare, Zap, Clock, Type, Settings2, Trash2, Plus, X, List, Image as ImageIcon, Video, FileText, Link } from "lucide-react";
 
 // --- Trigger Node ---
 export const TriggerNode = memo(({ data, isConnectable, id }: NodeProps) => {
@@ -59,6 +59,9 @@ export const SendMessageNode = memo(({ data, isConnectable, id }: NodeProps) => 
     const buttons = (data?.buttons as any[]) || [];
     const listItems = (data?.listItems as any[]) || [];
     const listButtonText = (data?.listButtonText as string) || 'Options';
+    const mediaUrl = (data?.mediaUrl as string) || '';
+
+    const isMedia = ['image', 'video', 'document'].includes(messageType);
 
     const addButton = () => {
         if (buttons.length >= 3) return;
@@ -110,35 +113,70 @@ export const SendMessageNode = memo(({ data, isConnectable, id }: NodeProps) => 
                 </button>
             </div>
             <div className="p-4 space-y-3">
-                <div className="flex bg-zinc-100 p-1 border border-zinc-200 rounded-lg">
+                <div className="grid grid-cols-3 gap-1 bg-zinc-100 p-1 border border-zinc-200 rounded-lg">
                     <button
                         onClick={() => updateNodeData(id, { messageType: 'text' })}
-                        className={`flex-1 text-xs py-1 rounded-md font-medium transition-colors ${messageType === 'text' ? 'bg-white shadow-sm text-zinc-900 border border-zinc-200' : 'text-zinc-500 hover:text-zinc-700'}`}
+                        className={`flex-1 text-[11px] py-1.5 rounded-md font-medium transition-colors ${messageType === 'text' ? 'bg-white shadow-sm text-zinc-900 border border-zinc-200' : 'text-zinc-500 hover:text-zinc-700'}`}
                     >
                         Text
                     </button>
                     <button
                         onClick={() => updateNodeData(id, { messageType: 'interactive' })}
-                        className={`flex-1 text-xs py-1 rounded-md font-medium transition-colors flex items-center justify-center gap-1 ${messageType === 'interactive' ? 'bg-white shadow-sm text-emerald-600 border border-emerald-200' : 'text-zinc-500 hover:text-zinc-700'}`}
+                        className={`flex-1 text-[11px] py-1.5 rounded-md font-medium transition-colors flex items-center justify-center gap-1 ${messageType === 'interactive' ? 'bg-white shadow-sm text-emerald-600 border border-emerald-200' : 'text-zinc-500 hover:text-zinc-700'}`}
                     >
                         Buttons
                     </button>
                     <button
                         onClick={() => updateNodeData(id, { messageType: 'list' })}
-                        className={`flex-1 text-xs py-1 rounded-md font-medium transition-colors flex items-center justify-center gap-1 ${messageType === 'list' ? 'bg-white shadow-sm text-indigo-600 border border-indigo-200' : 'text-zinc-500 hover:text-zinc-700'}`}
+                        className={`flex-1 text-[11px] py-1.5 rounded-md font-medium transition-colors flex items-center justify-center gap-1 ${messageType === 'list' ? 'bg-white shadow-sm text-indigo-600 border border-indigo-200' : 'text-zinc-500 hover:text-zinc-700'}`}
                     >
                         List
                     </button>
+                    <button
+                        onClick={() => updateNodeData(id, { messageType: 'image' })}
+                        className={`flex-1 text-[11px] py-1.5 rounded-md font-medium transition-colors flex items-center justify-center gap-1 ${messageType === 'image' ? 'bg-white shadow-sm text-sky-600 border border-sky-200' : 'text-zinc-500 hover:text-zinc-700'}`}
+                    >
+                        <ImageIcon className="w-3 h-3" /> Image
+                    </button>
+                    <button
+                        onClick={() => updateNodeData(id, { messageType: 'video' })}
+                        className={`flex-1 text-[11px] py-1.5 rounded-md font-medium transition-colors flex items-center justify-center gap-1 ${messageType === 'video' ? 'bg-white shadow-sm text-fuchsia-600 border border-fuchsia-200' : 'text-zinc-500 hover:text-zinc-700'}`}
+                    >
+                        <Video className="w-3 h-3" /> Video
+                    </button>
+                    <button
+                        onClick={() => updateNodeData(id, { messageType: 'document' })}
+                        className={`flex-1 text-[11px] py-1.5 rounded-md font-medium transition-colors flex items-center justify-center gap-1 ${messageType === 'document' ? 'bg-white shadow-sm text-rose-600 border border-rose-200' : 'text-zinc-500 hover:text-zinc-700'}`}
+                    >
+                        <FileText className="w-3 h-3" /> Doc
+                    </button>
                 </div>
 
-                <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Message Text</div>
+                {isMedia && (
+                    <div className="space-y-1">
+                        <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider flex items-center gap-1">
+                            <Link className="w-3 h-3" /> Media URL (Public)
+                        </div>
+                        <input
+                            type="url"
+                            value={mediaUrl}
+                            onChange={(e) => updateNodeData(id, { mediaUrl: e.target.value })}
+                            placeholder={`https://example.com/file.${messageType === 'image' ? 'jpg' : messageType === 'video' ? 'mp4' : 'pdf'}`}
+                            className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 nodrag"
+                        />
+                    </div>
+                )}
+
+                <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider">
+                    {isMedia ? 'Caption (Optional)' : 'Message Text'}
+                </div>
                 <textarea
                     value={(data?.message as string) || ''}
                     onChange={(e) => updateNodeData(id, { message: e.target.value })}
-                    placeholder="Enter message to send..."
-                    rows={4}
+                    placeholder={isMedia ? "Enter an optional caption..." : "Enter message to send..."}
+                    rows={isMedia ? 2 : 4}
                     className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 resize-none nodrag"
-                    style={{ minHeight: '80px' }}
+                    style={{ minHeight: isMedia ? '50px' : '80px' }}
                 />
 
                 {messageType === 'interactive' && (

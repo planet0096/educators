@@ -252,15 +252,41 @@ async function executeFlowSession(
                 const buttons = (currentNode.data?.buttons as any[]) || [];
                 const listItems = (currentNode.data?.listItems as any[]) || [];
                 const listButtonText = (currentNode.data?.listButtonText as string) || "Options";
+                const mediaUrl = (currentNode.data?.mediaUrl as string) || "";
                 let messageText = currentNode.data?.message || "";
+
+                // For Media nodes, message is actually the caption. Validate mediaUrl presence for media types.
+                if (['image', 'video', 'document'].includes(messageType) && !mediaUrl) {
+                    console.log(`[ChatbotEngine] Media Node ${currentNode.id} skipped due to missing mediaUrl.`);
+
+                    const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
+                    if (!nextNode) {
+                        currentNode = null;
+                        session.status = "completed";
+                    } else {
+                        currentNode = nextNode;
+                    }
+                    continue; // Skip trying to send a media without URL
+                }
 
                 // Replace variables {{varName}} with session state
                 for (const [key, value] of Object.entries(session.state)) {
                     messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), String(value));
                 }
 
-                if (messageText) {
-                    if (messageType === "list" && listItems.length > 0) {
+                // For media, the messageText is actually the caption, which is optional in WhatsApp API.
+                // We proceed if there is messageText OR if it's a media type (since mediaUrl is validated above).
+                if (messageText || ['image', 'video', 'document'].includes(messageType)) {
+                    if (['image', 'video', 'document'].includes(messageType)) {
+                        await sendWhatsAppMedia(
+                            whatsappConfig.phoneNumberId,
+                            whatsappConfig.accessToken,
+                            session.contactPhone,
+                            messageType as 'image' | 'video' | 'document',
+                            mediaUrl,
+                            messageText
+                        );
+                    } else if (messageType === "list" && listItems.length > 0) {
                         await sendWhatsAppList(
                             whatsappConfig.phoneNumberId,
                             whatsappConfig.accessToken,
@@ -468,5 +494,46 @@ async function sendWhatsAppList(phoneNumberId: string, accessToken: string, toPh
     if (!response.ok) {
         console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
         throw new Error(`Meta List API Failed (Status ${response.status}): ${JSON.stringify(data.error)}`);
+    }
+}
+
+async function sendWhatsAppMedia(phoneNumberId: string, accessToken: string, toPhone: string, type: 'image' | 'video' | 'document', url: string, caption?: string) {
+    const apiUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
+
+    const mediaPayload: any = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: toPhone,
+        type: type,
+        [type]: { link: url }
+    };
+
+    if (caption) {
+        mediaPayload[type].caption = caption;
+    }
+
+    if (type === 'document') {
+        // Document specifically can take a filename instead of using the raw URL path
+        try {
+            const filename = url.split('/').pop() || 'document.pdf';
+            mediaPayload.document.filename = filename;
+        } catch (e) { }
+    }
+
+    const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(mediaPayload)
+    });
+
+    const data = await response.json();
+    console.log(`[ChatbotEngine] WhatsApp Media (${type}) API Response for ${toPhone}:`, data);
+
+    if (!response.ok) {
+        console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
+        throw new Error(`Meta Media API Failed (Status ${response.status}): ${JSON.stringify(data.error)}`);
     }
 }
