@@ -4,6 +4,7 @@ import WhatsAppConfig from "@/models/WhatsAppConfig";
 import Conversation from "@/models/Conversation";
 import ChatMessage from "@/models/ChatMessage";
 import WebhookLog from "@/models/WebhookLog";
+import { processIncomingMessage } from "@/lib/chatbotEngine";
 
 // ─── GET: Meta webhook verification ──────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -127,6 +128,19 @@ export async function POST(req: NextRequest) {
                             status: "delivered",
                             timestamp: ts,
                         });
+
+                        // To prevent Meta webhook timeouts, we do NOT `await` processIncomingMessage directly.
+                        // Instead, we asynchronously call a background API endpoint that will handle the execution loop 
+                        // without holding up the Meta HTTP response.
+                        fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/whatsapp/chatbot/process`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                educatorId: educatorId.toString(),
+                                contactPhone,
+                                messageText: body_text
+                            })
+                        }).catch(err => console.error("Failed to enqueue chatbot process:", err));
                     } catch (dupErr: any) {
                         if (dupErr.code !== 11000) throw dupErr; // ignore duplicate wamId
                     }
