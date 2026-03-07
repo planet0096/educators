@@ -140,8 +140,8 @@ async function executeFlowSession(
             for (const edge of outgoingEdges) {
                 const targetNode = nodes.find((n: any) => n.id === edge.target);
                 if (targetNode && targetNode.type === "conditionNode") {
-                    const conditionStr = (targetNode.data?.condition || "").toLowerCase().trim();
-                    if (incomingMessage === conditionStr || incomingMessage.includes(conditionStr)) {
+                    const conditions = (targetNode.data?.condition || "").split(",").map((c: string) => c.toLowerCase().trim()).filter(Boolean);
+                    if (conditions.some((c: string) => incomingMessage === c || incomingMessage.includes(c))) {
                         selectedEdge = edge;
                         break;
                     }
@@ -169,8 +169,8 @@ async function executeFlowSession(
         for (const edge of outgoingEdges) {
             const targetNode = nodes.find((n: any) => n.id === edge.target);
             if (targetNode && targetNode.type === "conditionNode") {
-                const conditionStr = (targetNode.data?.condition || "").toLowerCase().trim();
-                if (currentMessage === conditionStr || currentMessage.includes(conditionStr)) {
+                const conditions = (targetNode.data?.condition || "").split(",").map((c: string) => c.toLowerCase().trim()).filter(Boolean);
+                if (conditions.some((c: string) => currentMessage === c || currentMessage.includes(c))) {
                     return targetNode;
                 }
             }
@@ -219,8 +219,8 @@ async function executeFlowSession(
                 return; // EXIT LOOP
 
             } else if (currentNode.type === "conditionNode") {
-                const conditionStr = (currentNode.data?.condition || "").toLowerCase().trim();
-                const isMatch = incomingMessage === conditionStr || incomingMessage.includes(conditionStr);
+                const conditions = (currentNode.data?.condition || "").split(",").map((c: string) => c.toLowerCase().trim()).filter(Boolean);
+                const isMatch = conditions.some((c: string) => incomingMessage === c || incomingMessage.includes(c));
 
                 // Figure out which handle to follow
                 const sourceHandle = isMatch ? "true" : "false";
