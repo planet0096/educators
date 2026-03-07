@@ -1,7 +1,7 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export type MessageDirection = "inbound" | "outbound";
-export type MessageType = "text" | "template" | "image" | "audio" | "video" | "document" | "sticker" | "reaction" | "unknown";
+export type MessageType = "text" | "template" | "image" | "audio" | "video" | "document" | "sticker" | "reaction" | "interactive" | "unknown";
 export type MessageStatus = "sent" | "delivered" | "read" | "failed";
 
 export interface IChatMessage extends Document {
@@ -27,7 +27,7 @@ const ChatMessageSchema: Schema = new Schema(
         conversationId: { type: Schema.Types.ObjectId, ref: "Conversation", required: true },
         wamId: { type: String, required: true, unique: true },
         direction: { type: String, enum: ["inbound", "outbound"], required: true },
-        type: { type: String, enum: ["text", "template", "image", "audio", "video", "document", "sticker", "reaction", "unknown"], default: "text" },
+        type: { type: String, enum: ["text", "template", "image", "audio", "video", "document", "sticker", "reaction", "interactive", "unknown"], default: "text" },
         body: { type: String, default: "" },
         mediaUrl: { type: String },
         mimeType: { type: String },

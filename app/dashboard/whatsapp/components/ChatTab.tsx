@@ -63,6 +63,27 @@ function MsgTypeIcon({ type }: { type: string }) {
     return null;
 }
 
+function InteractiveMessage({ body }: { body: string }) {
+    try {
+        const parsed = JSON.parse(body);
+        return (
+            <div className="bg-emerald-50 rounded-lg p-3 w-full text-left space-y-2.5 my-1">
+                <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider mb-2">Form Submitted</div>
+                <div className="space-y-2">
+                    {Object.entries(parsed).map(([key, value]) => (
+                        <div key={key}>
+                            <span className="block text-[10px] text-emerald-600 uppercase font-semibold">{key.replace(/_/g, " ")}</span>
+                            <span className="block text-sm text-emerald-950 font-medium">{String(value)}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    } catch {
+        return <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{body}</p>;
+    }
+}
+
 function extractTemplateVars(template: WhatsAppTemplate | undefined) {
     if (!template) return [];
     const vars: { id: string; label: string }[] = [];
@@ -617,7 +638,11 @@ export default function ChatTab() {
                                                             <span className="text-xs text-zinc-600 capitalize">{msg.type}</span>
                                                         </div>
                                                     )}
-                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
+                                                    {msg.type === "interactive" ? (
+                                                        <InteractiveMessage body={msg.body} />
+                                                    ) : (
+                                                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
+                                                    )}
                                                     <div className={`flex items-center gap-1 mt-0.5 ${isOut ? "justify-end" : "justify-start"}`}>
                                                         <span className="text-[10px] text-zinc-400">
                                                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

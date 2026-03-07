@@ -83,6 +83,17 @@ export async function POST(req: NextRequest) {
                         mediaUrl = mediaObj?.id ?? "";
                     } else if (type === "reaction") {
                         body_text = msg.reaction?.emoji ?? "[reaction]";
+                    } else if (type === "interactive") {
+                        const inter = msg.interactive;
+                        if (inter?.type === "nfm_reply") {
+                            body_text = inter.nfm_reply?.response_json || "{}";
+                        } else if (inter?.type === "button_reply") {
+                            body_text = inter.button_reply?.title || "[Button Reply]";
+                        } else if (inter?.type === "list_reply") {
+                            body_text = inter.list_reply?.title || "[List Reply]";
+                        } else {
+                            body_text = "[Interactive Message]";
+                        }
                     } else {
                         body_text = `[${type}]`;
                     }
