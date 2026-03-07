@@ -4,7 +4,9 @@ import WhatsAppConfig from "@/models/WhatsAppConfig";
 import Conversation from "@/models/Conversation";
 import ChatMessage from "@/models/ChatMessage";
 import WebhookLog from "@/models/WebhookLog";
-import { processIncomingMessage } from "@/lib/chatbotEngine";
+import { Client } from "@upstash/qstash";
+
+const qstash = new Client({ token: process.env.QSTASH_TOKEN || "" });
 
 // ─── GET: Meta webhook verification ──────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -129,18 +131,21 @@ export async function POST(req: NextRequest) {
                             timestamp: ts,
                         });
 
-                        // To prevent Meta webhook timeouts, we do NOT `await` processIncomingMessage directly.
-                        // Instead, we asynchronously call a background API endpoint that will handle the execution loop 
-                        // without holding up the Meta HTTP response.
-                        fetch(`${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/whatsapp/chatbot/process`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                educatorId: educatorId.toString(),
-                                contactPhone,
-                                messageText: body_text
-                            })
-                        }).catch(err => console.error("Failed to enqueue chatbot process:", err));
+                        // Push to QStash queue instead of an unreliable detached fetch
+                        // This ensures 100% execution guarantee even if Vercel serverless functions time out.
+                        if (process.env.QSTASH_TOKEN) {
+                            await qstash.publishJSON({
+                                url: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/whatsapp/chatbot/queue`,
+                                body: {
+                                    educatorId: educatorId.toString(),
+                                    contactPhone,
+                                    messageText: body_text
+                                },
+                                retries: 3 // Exponential backoff retries if your API or Meta fails
+                            });
+                        } else {
+                            console.warn("⚠️ QSTASH_TOKEN is missing. Chatbot engine will not process messages.");
+                        }
                     } catch (dupErr: any) {
                         if (dupErr.code !== 11000) throw dupErr; // ignore duplicate wamId
                     }

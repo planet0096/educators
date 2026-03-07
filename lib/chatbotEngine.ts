@@ -1,15 +1,74 @@
 import AutomationFlow from "@/models/AutomationFlow";
 import AutomationSession from "@/models/AutomationSession";
 import { IWhatsAppConfig } from "@/models/WhatsAppConfig";
+import mongoose from "mongoose";
 
-export const processIncomingMessage = async (
+// Acquire a mutually exclusive lock on the specific contact's session to prevent race conditions
+// when the user fires two rapid messages at the webhook simultaneously.
+async function acquireLock(educatorId: string, contactPhone: string, maxWaitMs = 5000): Promise<boolean> {
+    const lockKey = `${educatorId}_${contactPhone}_lock`;
+    const start = Date.now();
+
+    while (Date.now() - start < maxWaitMs) {
+        // Try to atomically set an 'engineLocked' flag on the session (or create a phantom session if none exists)
+        const session = await AutomationSession.findOneAndUpdate(
+            { educatorId, contactPhone, engineLocked: { $ne: true } },
+            { $set: { engineLocked: true, lockedAt: new Date() } },
+            { new: true, upsert: false }
+        );
+
+        if (session) return true; // Successfully acquired lock on existing session
+
+        // If no session exists at all, we create a fresh one *with* the lock enabled atomically
+        try {
+            await AutomationSession.create({
+                educatorId,
+                contactPhone,
+                status: 'completed', // Not currently mid-flow
+                engineLocked: true,
+                lockedAt: new Date(),
+                state: {},
+            });
+            return true;
+        } catch (err: any) {
+            if (err.code !== 11000) throw err; // Ignore duplicate key errors if someone beat us to creating it
+        }
+
+        // Wait 250ms and try again
+        await new Promise(resolve => setTimeout(resolve, 250));
+    }
+
+    return false; // Failed to acquire lock within timeout
+}
+
+async function releaseLock(educatorId: string, contactPhone: string) {
+    await AutomationSession.findOneAndUpdate(
+        { educatorId, contactPhone },
+        { $unset: { engineLocked: 1, lockedAt: 1 } }
+    );
+}
+
+export async function processIncomingMessage(
     educatorId: string,
     contactPhone: string,
-    messageText: string,
-    whatsappConfig: IWhatsAppConfig
-) => {
+    incomingMessage: string,
+    whatsappConfig: any
+) {
+    // 1. Enforce Concurrency Lock
+    const locked = await acquireLock(educatorId, contactPhone);
+    if (!locked) {
+        console.error(`[ChatbotEngine] Mutex Lock timeout for ${contactPhone}. Force releasing and retrying...`);
+        // If we timeout, it means a previous process crashed without releasing the lock. 
+        // We throw an Error to tell QStash/Inngest to backoff and retry this message later.
+        await releaseLock(educatorId, contactPhone);
+        throw new Error("Concurrency lock timeout -> requeueing message");
+    }
+
     try {
-        const textLower = messageText.toLowerCase().trim();
+        console.log(`\n================================`);
+        console.log(`[ChatbotEngine] START - Contact: ${contactPhone} | Message: "${incomingMessage}"`);
+
+        const textLower = incomingMessage.toLowerCase().trim();
 
         // 1. Check if there is an active session for this contact
         let activeSession = await AutomationSession.findOne({
@@ -22,6 +81,8 @@ export const processIncomingMessage = async (
             // Resume the flow
             console.log(`[ChatbotEngine] Resuming session for ${contactPhone}`);
             await executeFlowSession(activeSession, textLower, whatsappConfig);
+            console.log(`[ChatbotEngine] END - Session is now ${activeSession.status}`);
+            console.log(`================================\n`);
             return;
         }
 
@@ -278,28 +339,28 @@ async function executeFlowSession(
 async function sendWhatsAppText(phoneNumberId: string, accessToken: string, toPhone: string, text: string) {
     const apiUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
 
-    try {
-        const response = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                messaging_product: "whatsapp",
-                to: toPhone,
-                type: "text",
-                text: { body: text }
-            })
-        });
+    const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: toPhone,
+            type: "text",
+            text: { body: text }
+        })
+    });
 
-        const data = await response.json();
-        console.log(`[ChatbotEngine] WhatsApp API Response for ${toPhone}:`, data);
-        if (!response.ok) {
-            console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
-        }
-    } catch (err) {
-        console.error(`[ChatbotEngine] Fetch Error:`, err);
+    const data = await response.json();
+    console.log(`[ChatbotEngine] WhatsApp API Response for ${toPhone}:`, data);
+
+    if (!response.ok) {
+        console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
+        // Throwing error here bubbles up to the QStash Consumer route, intentionally causing it to return 500.
+        // QStash intercepts the 500 and will automatically retry this specific user message via exponential backoff.
+        throw new Error(`Meta API Failed (Status ${response.status}): ${JSON.stringify(data.error)}`);
     }
 }
 
@@ -330,22 +391,22 @@ async function sendWhatsAppInteractive(phoneNumberId: string, accessToken: strin
         }
     };
 
-    try {
-        const response = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(interactivePayload)
-        });
+    const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(interactivePayload)
+    });
 
-        const data = await response.json();
-        console.log(`[ChatbotEngine] WhatsApp Interactive API Response for ${toPhone}:`, data);
-        if (!response.ok) {
-            console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
-        }
-    } catch (err) {
-        console.error(`[ChatbotEngine] Fetch Error:`, err);
+    const data = await response.json();
+    console.log(`[ChatbotEngine] WhatsApp Interactive API Response for ${toPhone}:`, data);
+
+    if (!response.ok) {
+        console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
+        // Throwing error here bubbles up to the QStash Consumer route, intentionally causing it to return 500.
+        // QStash intercepts the 500 and will automatically retry this specific user message via exponential backoff.
+        throw new Error(`Meta Interactive API Failed (Status ${response.status}): ${JSON.stringify(data.error)}`);
     }
 }
