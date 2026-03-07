@@ -1,12 +1,12 @@
 import { useState, useEffect, FormEvent } from "react";
-import { Megaphone, Plus, Loader2, Play, CheckCircle2, AlertCircle, Users, ChevronLeft, RefreshCw, XCircle, Image as ImageIcon, Video, FileText, MapPin, ExternalLink, Phone, Copy, ListX, ArrowRight } from "lucide-react";
+import { Megaphone, Plus, Loader2, Play, CheckCircle2, AlertCircle, Users, ChevronLeft, RefreshCw, XCircle, Image as ImageIcon, Video, FileText, MapPin, ExternalLink, Phone, Copy, ListX, ArrowRight, Pause, Square, PlayCircle } from "lucide-react";
 import { WhatsAppTemplate } from "@/models/WhatsAppTemplateTypes";
 
 interface Campaign {
     _id: string;
     name: string;
     templateName: string;
-    status: "pending" | "running" | "completed" | "failed";
+    status: "pending" | "running" | "completed" | "failed" | "paused" | "stopped";
     totalContacts: number;
     successfulSends: number;
     failedSends: number;
@@ -40,6 +40,27 @@ export default function CampaignsTab() {
     const [campaignMessages, setCampaignMessages] = useState<any[]>([]);
     const [detailLoading, setDetailLoading] = useState(false);
     const [isPolling, setIsPolling] = useState(false);
+    const [campaignActioning, setCampaignActioning] = useState(false);
+
+    const handleCampaignAction = async (action: "pause" | "resume" | "stop") => {
+        if (!activeCampaign) return;
+        setCampaignActioning(true);
+        try {
+            const res = await fetch(`/api/whatsapp/campaigns/${activeCampaign._id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action })
+            });
+            const data = await res.json();
+            if (res.ok && data.campaign) {
+                setActiveCampaign(data.campaign);
+            }
+        } catch (err) {
+            console.error("Campaign action failed:", err);
+        } finally {
+            setCampaignActioning(false);
+        }
+    };
 
     useEffect(() => {
         if (view === "list") {
@@ -702,7 +723,27 @@ export default function CampaignsTab() {
                             <p className="text-zinc-500 text-sm mt-1">Using template: <span className="font-medium text-zinc-700">{activeCampaign.templateName}</span></p>
                         </div>
                     </div>
-                    {isPolling && <span className="text-xs font-bold text-emerald-600 animate-pulse flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Live tracking</span>}
+                    <div className="flex items-center gap-3">
+                        {activeCampaign.status === "running" && (
+                            <button onClick={() => handleCampaignAction("pause")} disabled={campaignActioning}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-200 transition-all disabled:opacity-50">
+                                {campaignActioning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Pause className="w-4 h-4 fill-current" />} Pause
+                            </button>
+                        )}
+                        {activeCampaign.status === "paused" && (
+                            <button onClick={() => handleCampaignAction("resume")} disabled={campaignActioning}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200 transition-all disabled:opacity-50">
+                                {campaignActioning ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlayCircle className="w-4 h-4" />} Resume
+                            </button>
+                        )}
+                        {(activeCampaign.status === "running" || activeCampaign.status === "paused") && (
+                            <button onClick={() => { if (confirm("Stop this campaign permanently? This cannot be undone.")) handleCampaignAction("stop"); }} disabled={campaignActioning}
+                                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-red-100 text-red-700 hover:bg-red-200 border border-red-200 transition-all disabled:opacity-50">
+                                {campaignActioning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4 fill-current" />} Stop
+                            </button>
+                        )}
+                        {isPolling && <span className="text-xs font-bold text-emerald-600 animate-pulse flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-emerald-500"></div> Live tracking</span>}
+                    </div>
                 </div>
 
                 <div className="p-6 md:p-8 bg-zinc-50/50">

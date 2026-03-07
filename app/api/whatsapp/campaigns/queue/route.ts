@@ -45,6 +45,23 @@ async function handler(req: NextRequest) {
             return new NextResponse("Campaign not found", { status: 400 });
         }
 
+        // Guard: skip job if campaign was paused or stopped by the user
+        if (campaign.status === "paused") {
+            console.log(`[Campaign Queue] PAUSED — skipping message ${msg._id}`);
+            // Return 200 so QStash doesn't retry. Remaining pending messages will
+            // stay in DB and can be re-dispatched when user resumes.
+            return NextResponse.json({ skipped: true, reason: "paused" }, { status: 200 });
+        }
+        if (campaign.status === "stopped") {
+            console.log(`[Campaign Queue] STOPPED — cancelling message ${msg._id}`);
+            await CampaignMessage.findByIdAndUpdate(msg._id, {
+                status: "failed",
+                errorMessage: "Campaign stopped by user"
+            });
+            await Campaign.findByIdAndUpdate(campaign._id, { $inc: { failedSends: 1 } });
+            return NextResponse.json({ skipped: true, reason: "stopped" }, { status: 200 });
+        }
+
         const whatsappConfig = await WhatsAppConfig.findOne({
             user: campaign.educatorId
         });
