@@ -17,7 +17,7 @@ import {
     Panel
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw } from "lucide-react";
+import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { nodeTypes } from "./components/CustomNodes";
@@ -42,6 +42,10 @@ function FlowBuilderCanvas() {
     const [showDebug, setShowDebug] = useState(false);
     const [sessions, setSessions] = useState<any[]>([]);
     const [loadingSessions, setLoadingSessions] = useState(false);
+
+    // JSON Edit panel state
+    const [showJsonModal, setShowJsonModal] = useState(false);
+    const [jsonInput, setJsonInput] = useState("");
 
     // Note: We need a ref to access the latest state inside the callback if needed
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -109,6 +113,37 @@ function FlowBuilderCanvas() {
             toast.error("Failed to load debug logs");
         } finally {
             setLoadingSessions(false);
+        }
+    };
+
+    const handleOpenJsonModal = () => {
+        if (!reactFlowInstance) return;
+        const flowData = reactFlowInstance.toObject();
+
+        const cleanFlowData = {
+            nodes: flowData.nodes,
+            edges: flowData.edges
+        };
+
+        setJsonInput(JSON.stringify(cleanFlowData, null, 2));
+        setShowJsonModal(true);
+    };
+
+    const handleImportJson = () => {
+        try {
+            const parsed = JSON.parse(jsonInput);
+            if (parsed.nodes && Array.isArray(parsed.nodes)) {
+                setNodes(parsed.nodes);
+            }
+            if (parsed.edges && Array.isArray(parsed.edges)) {
+                setEdges(parsed.edges);
+            }
+            toast.success("Flow imported successfully! Don't forget to save.", { position: "top-center" });
+            setShowJsonModal(false);
+            setSaving(false); // To prompt the user to specifically hit the Save Flow button after parsing
+        } catch (err) {
+            console.error("Failed to parse JSON", err);
+            toast.error("Invalid JSON format. Please check the structure.");
         }
     };
 
@@ -221,6 +256,14 @@ function FlowBuilderCanvas() {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={handleOpenJsonModal}
+                        className="px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2 bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                    >
+                        <Code className="w-4 h-4" />
+                        Code / JSON
+                    </button>
+
                     <button
                         onClick={() => {
                             setShowDebug(!showDebug);
@@ -380,6 +423,66 @@ function FlowBuilderCanvas() {
                     )}
                 </div>
             </div>
+
+            {/* JSON Import/Export Modal */}
+            {showJsonModal && (
+                <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[90vh] overflow-hidden">
+                        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50 shrink-0">
+                            <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+                                <Code className="w-5 h-5 text-indigo-500" />
+                                Flow JSON Source
+                            </h2>
+                            <button
+                                onClick={() => setShowJsonModal(false)}
+                                className="p-2 hover:bg-zinc-200 rounded-lg text-zinc-500 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 flex-1 overflow-y-auto bg-zinc-50">
+                            <p className="text-sm text-zinc-600 mb-4 font-medium">
+                                Review your current automation logic or paste a pre-built JSON bot to import it directly into the visual canvas.
+                            </p>
+                            <textarea
+                                value={jsonInput}
+                                onChange={(e) => setJsonInput(e.target.value)}
+                                className="w-full h-[400px] p-4 rounded-xl border border-zinc-200 bg-[#1e1e1e] text-[#d4d4d4] font-mono text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none leading-relaxed"
+                                spellCheck={false}
+                            />
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-zinc-200 flex items-center justify-between bg-white shrink-0">
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(jsonInput);
+                                    toast.success("JSON copied to clipboard!");
+                                }}
+                                className="px-4 py-2 rounded-xl text-sm font-medium bg-zinc-100 text-zinc-700 hover:bg-zinc-200 transition-colors flex items-center gap-2"
+                            >
+                                <Download className="w-4 h-4" />
+                                Copy to Clipboard
+                            </button>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowJsonModal(false)}
+                                    className="px-4 py-2 rounded-xl text-sm font-medium bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleImportJson}
+                                    className="px-5 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm"
+                                >
+                                    <Upload className="w-4 h-4" />
+                                    Import JSON to Canvas
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
