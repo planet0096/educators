@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
     Search, Send, CheckCheck, Check, Clock, Image as ImageIcon,
-    Video, FileText, Music, Archive, ChevronDown, MessageSquare,
+    Video, FileText, Music, Archive, ArchiveRestore, ChevronDown, MessageSquare,
     Loader2, X, RefreshCw, Bell, BellOff, Volume2, VolumeX
 } from "lucide-react";
 import { WhatsAppTemplate } from "@/models/WhatsAppTemplateTypes";
@@ -103,6 +103,9 @@ export default function ChatTab() {
     const [messages, setMessages] = useState<ChatMsg[]>([]);
     const [msgLoading, setMsgLoading] = useState(false);
 
+    // View state: open or archived
+    const [chatView, setChatView] = useState<"open" | "archived">("open");
+
     // Refs to always have latest values in intervals (avoids stale closure bug)
     const activeConvRef = useRef<Conversation | null>(null);
     const messagesRef = useRef<ChatMsg[]>([]);
@@ -110,6 +113,7 @@ export default function ChatTab() {
     const lastConvRef = useRef<Conversation[]>([]);
     const convPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const msgPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const chatViewRef = useRef<"open" | "archived">("open");
 
     // Notifications
     const [soundOn, setSoundOn] = useState(true);
@@ -137,11 +141,12 @@ export default function ChatTab() {
     // Keep refs in sync
     useEffect(() => { activeConvRef.current = activeConv; }, [activeConv]);
     useEffect(() => { messagesRef.current = messages; }, [messages]);
+    useEffect(() => { chatViewRef.current = chatView; }, [chatView]);
 
     // ── Fetch conversations ──────────────────────────────────────────────────
     const fetchConversations = useCallback(async () => {
         try {
-            const res = await fetch("/api/whatsapp/conversations");
+            const res = await fetch(`/api/whatsapp/conversations?status=${chatViewRef.current}`);
             const data = await res.json();
             if (!data.success) { setFetchError(data.error || "Error"); return; }
             setFetchError(null);
@@ -213,10 +218,13 @@ export default function ChatTab() {
 
     // ── Start conversation polling (runs once) ────────────────────────────────
     useEffect(() => {
+        setConvLoading(true);
+        setActiveConv(null); // Deselect on tab change
         fetchConversations();
+        if (convPollingRef.current) clearInterval(convPollingRef.current);
         convPollingRef.current = setInterval(fetchConversations, 4000);
         return () => { if (convPollingRef.current) clearInterval(convPollingRef.current); };
-    }, [fetchConversations]);
+    }, [chatView, fetchConversations]);
 
     // ── Message polling — restart on active conversation change ───────────────
     useEffect(() => {
@@ -435,7 +443,7 @@ export default function ChatTab() {
                         <div className="w-9 h-9 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-sm">WA</div>
                         <div>
                             <h2 className="text-sm font-bold text-zinc-900">Inbox</h2>
-                            {totalUnread > 0 && <p className="text-[11px] text-emerald-600 font-medium">{totalUnread} unread</p>}
+                            {totalUnread > 0 && chatView === "open" && <p className="text-[11px] text-emerald-600 font-medium">{totalUnread} unread</p>}
                         </div>
                     </div>
                     <div className="flex items-center gap-1">
@@ -460,6 +468,17 @@ export default function ChatTab() {
                             placeholder="Search chats"
                             className="w-full bg-white rounded-lg pl-9 pr-4 py-2 text-sm text-zinc-700 focus:outline-none"
                         />
+                    </div>
+                    {/* Tabs */}
+                    <div className="flex bg-zinc-200/50 p-0.5 rounded-lg mt-2">
+                        <button onClick={() => setChatView("open")}
+                            className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${chatView === "open" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}>
+                            Open
+                        </button>
+                        <button onClick={() => setChatView("archived")}
+                            className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-all ${chatView === "archived" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}>
+                            Archived
+                        </button>
                     </div>
                 </div>
 
@@ -540,15 +559,18 @@ export default function ChatTab() {
                         </div>
                         <button
                             onClick={() => {
+                                const newStatus = activeConv.status === "open" ? "archived" : "open";
                                 fetch(`/api/whatsapp/conversations/${activeConv._id}`, {
                                     method: "PATCH", headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ status: "archived" })
+                                    body: JSON.stringify({ status: newStatus })
                                 });
                                 setConversations(prev => prev.filter(c => c._id !== activeConv._id));
                                 setActiveConv(null);
                             }}
-                            className="p-2 hover:bg-zinc-200 rounded-full transition-colors" title="Archive">
-                            <Archive className="w-4 h-4 text-zinc-500" />
+                            className="p-2 hover:bg-zinc-200 rounded-full transition-colors focus:outline-none"
+                            title={activeConv.status === "open" ? "Archive" : "Unarchive"}
+                        >
+                            {activeConv.status === "open" ? <Archive className="w-4 h-4 text-zinc-500" /> : <ArchiveRestore className="w-4 h-4 text-emerald-600" />}
                         </button>
                     </div>
 
