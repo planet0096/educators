@@ -5,7 +5,7 @@ import AutomationSession from "@/models/AutomationSession";
 
 export async function GET(
     req: NextRequest,
-    context: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
         const session = await auth();
