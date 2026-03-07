@@ -187,6 +187,8 @@ async function executeFlowSession(
         while (currentNode) {
             console.log(`[ChatbotEngine] Executing node: ${currentNode.id} (${currentNode.type})`);
             if (currentNode.type === "sendMessageNode") {
+                const messageType = currentNode.data?.messageType || "text";
+                const buttons = (currentNode.data?.buttons as any[]) || [];
                 let messageText = currentNode.data?.message || "";
 
                 // Replace variables {{varName}} with session state
@@ -195,12 +197,22 @@ async function executeFlowSession(
                 }
 
                 if (messageText) {
-                    await sendWhatsAppText(
-                        whatsappConfig.phoneNumberId,
-                        whatsappConfig.accessToken,
-                        session.contactPhone,
-                        messageText
-                    );
+                    if (messageType === "interactive" && buttons.length > 0) {
+                        await sendWhatsAppInteractive(
+                            whatsappConfig.phoneNumberId,
+                            whatsappConfig.accessToken,
+                            session.contactPhone,
+                            messageText,
+                            buttons
+                        );
+                    } else {
+                        await sendWhatsAppText(
+                            whatsappConfig.phoneNumberId,
+                            whatsappConfig.accessToken,
+                            session.contactPhone,
+                            messageText
+                        );
+                    }
                 }
 
                 const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
@@ -283,6 +295,53 @@ async function sendWhatsAppText(phoneNumberId: string, accessToken: string, toPh
 
         const data = await response.json();
         console.log(`[ChatbotEngine] WhatsApp API Response for ${toPhone}:`, data);
+        if (!response.ok) {
+            console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
+        }
+    } catch (err) {
+        console.error(`[ChatbotEngine] Fetch Error:`, err);
+    }
+}
+
+async function sendWhatsAppInteractive(phoneNumberId: string, accessToken: string, toPhone: string, text: string, buttons: any[]) {
+    const apiUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
+
+    // Cap buttons to 3 (WhatsApp limit)
+    const validButtons = buttons.slice(0, 3).filter(b => b.title && b.title.trim() !== "");
+    if (validButtons.length === 0) return sendWhatsAppText(phoneNumberId, accessToken, toPhone, text);
+
+    const interactivePayload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: toPhone,
+        type: "interactive",
+        interactive: {
+            type: "button",
+            body: { text },
+            action: {
+                buttons: validButtons.map((btn, index) => ({
+                    type: "reply",
+                    reply: {
+                        id: btn.id || `btn_${index}`,
+                        title: btn.title.substring(0, 20) // API limit 20 chars
+                    }
+                }))
+            }
+        }
+    };
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(interactivePayload)
+        });
+
+        const data = await response.json();
+        console.log(`[ChatbotEngine] WhatsApp Interactive API Response for ${toPhone}:`, data);
         if (!response.ok) {
             console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
         }
