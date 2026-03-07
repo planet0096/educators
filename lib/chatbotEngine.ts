@@ -306,6 +306,42 @@ async function executeFlowSession(
                     currentNode = nodes.find((n: any) => n.id === outgoingEdge.target);
                 }
 
+            } else if (currentNode.type === "listMessageNode") {
+                const items = (currentNode.data?.items as any[]) || [];
+                const buttonLabel = (currentNode.data?.buttonLabel as string) || "View Options";
+                const footer = (currentNode.data?.footer as string) || "";
+                let messageText = (currentNode.data?.message as string) || "";
+
+                // Replace variables {{varName}} with session state
+                for (const [key, value] of Object.entries(session.state)) {
+                    messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), String(value));
+                }
+
+                const validItems = items.filter((item: any) => item.title?.trim() !== "");
+
+                if (messageText && validItems.length > 0) {
+                    await sendWhatsAppList(
+                        whatsappConfig.phoneNumberId,
+                        whatsappConfig.accessToken,
+                        session.contactPhone,
+                        messageText,
+                        footer,
+                        buttonLabel,
+                        validItems
+                    );
+                } else if (messageText) {
+                    // Fallback to text if no items configured
+                    await sendWhatsAppText(whatsappConfig.phoneNumberId, whatsappConfig.accessToken, session.contactPhone, messageText);
+                }
+
+                const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
+                if (!nextNode) {
+                    currentNode = null;
+                    session.status = "completed";
+                } else {
+                    currentNode = nextNode;
+                }
+
             } else if (currentNode.type === "triggerNode") {
                 // Just move to the next node
                 const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
@@ -408,5 +444,62 @@ async function sendWhatsAppInteractive(phoneNumberId: string, accessToken: strin
         // Throwing error here bubbles up to the QStash Consumer route, intentionally causing it to return 500.
         // QStash intercepts the 500 and will automatically retry this specific user message via exponential backoff.
         throw new Error(`Meta Interactive API Failed (Status ${response.status}): ${JSON.stringify(data.error)}`);
+    }
+}
+
+async function sendWhatsAppList(
+    phoneNumberId: string,
+    accessToken: string,
+    toPhone: string,
+    bodyText: string,
+    footerText: string,
+    buttonLabel: string,
+    items: { title: string; description?: string }[]
+) {
+    const apiUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
+
+    // WhatsApp List Messages must have at least 1 and at most 10 items in one or more sections
+    const rows = items.slice(0, 10).map((item, index) => ({
+        id: `list_item_${index}`,
+        title: item.title.substring(0, 24),          // API limit: 24 chars
+        description: (item.description || "").substring(0, 72) // API limit: 72 chars
+    }));
+
+    const listPayload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: toPhone,
+        type: "interactive",
+        interactive: {
+            type: "list",
+            body: { text: bodyText },
+            ...(footerText ? { footer: { text: footerText } } : {}),
+            action: {
+                button: buttonLabel.substring(0, 20), // API limit: 20 chars
+                sections: [
+                    {
+                        title: "Options",
+                        rows
+                    }
+                ]
+            }
+        }
+    };
+
+    const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(listPayload)
+    });
+
+    const data = await response.json();
+    console.log(`[ChatbotEngine] WhatsApp List API Response for ${toPhone}:`, data);
+
+    if (!response.ok) {
+        console.error(`[ChatbotEngine] WhatsApp List API Error:`, data);
+        throw new Error(`Meta List API Failed (Status ${response.status}): ${JSON.stringify(data.error)}`);
     }
 }
