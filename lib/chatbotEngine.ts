@@ -132,17 +132,53 @@ async function executeFlowSession(
             session.markModified('state');
         }
 
-        // Find next edge
-        const outgoingEdge = edges.find((e: any) => e.source === currentNode.id);
-        if (!outgoingEdge) {
+        // Find next edge. If branching to multiple conditions, evaluate which one matches.
+        const outgoingEdges = edges.filter((e: any) => e.source === currentNode.id);
+        let selectedEdge = outgoingEdges.length > 0 ? outgoingEdges[0] : null;
+
+        if (outgoingEdges.length > 1) {
+            for (const edge of outgoingEdges) {
+                const targetNode = nodes.find((n: any) => n.id === edge.target);
+                if (targetNode && targetNode.type === "conditionNode") {
+                    const conditionStr = (targetNode.data?.condition || "").toLowerCase().trim();
+                    if (incomingMessage === conditionStr || incomingMessage.includes(conditionStr)) {
+                        selectedEdge = edge;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!selectedEdge) {
             session.status = "completed";
             await session.save();
             return;
         }
 
         previousNode = currentNode;
-        currentNode = nodes.find((n: any) => n.id === outgoingEdge.target);
+        currentNode = nodes.find((n: any) => n.id === selectedEdge.target);
     }
+
+    // Helper function to pick next node for generic nodes (handles parallel condition branching)
+    const getNextGenericNode = (nodeId: string, currentMessage: string) => {
+        const outgoingEdges = edges.filter((e: any) => e.source === nodeId);
+        if (outgoingEdges.length === 0) return null;
+        if (outgoingEdges.length === 1) return nodes.find((n: any) => n.id === outgoingEdges[0].target);
+
+        // Multiple edges: try to route to a matching condition node
+        for (const edge of outgoingEdges) {
+            const targetNode = nodes.find((n: any) => n.id === edge.target);
+            if (targetNode && targetNode.type === "conditionNode") {
+                const conditionStr = (targetNode.data?.condition || "").toLowerCase().trim();
+                if (currentMessage === conditionStr || currentMessage.includes(conditionStr)) {
+                    return targetNode;
+                }
+            }
+        }
+
+        // Fallback to the first target if no condition matches
+        return nodes.find((n: any) => n.id === outgoingEdges[0].target);
+    };
 
     // Step 2: Loop through nodes until we hit a Wait, or the end of the flow
     let isWaitingForReply = false;
@@ -167,12 +203,12 @@ async function executeFlowSession(
                     );
                 }
 
-                const outgoingEdge = edges.find((e: any) => e.source === currentNode.id);
-                if (!outgoingEdge) {
+                const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
+                if (!nextNode) {
                     currentNode = null;
                     session.status = "completed";
                 } else {
-                    currentNode = nodes.find((n: any) => n.id === outgoingEdge.target);
+                    currentNode = nextNode;
                 }
 
             } else if (currentNode.type === "waitReplyNode") {
@@ -199,12 +235,12 @@ async function executeFlowSession(
 
             } else if (currentNode.type === "triggerNode") {
                 // Just move to the next node
-                const outgoingEdge = edges.find((e: any) => e.source === currentNode.id);
-                if (!outgoingEdge) {
+                const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
+                if (!nextNode) {
                     currentNode = null;
                     session.status = "completed";
                 } else {
-                    currentNode = nodes.find((n: any) => n.id === outgoingEdge.target);
+                    currentNode = nextNode;
                 }
             } else {
                 // Unknown node
