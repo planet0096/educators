@@ -126,7 +126,7 @@ export async function processIncomingMessage(
         }
 
         if (!matchingFlow) {
-            console.log(`[ChatbotEngine] No matching flow found for text: "${messageText}"`);
+            console.log(`[ChatbotEngine] No matching flow found for text: "${incomingMessage}"`);
             return; // No matching flow
         }
 
