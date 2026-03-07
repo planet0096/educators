@@ -250,6 +250,8 @@ async function executeFlowSession(
             if (currentNode.type === "sendMessageNode") {
                 const messageType = currentNode.data?.messageType || "text";
                 const buttons = (currentNode.data?.buttons as any[]) || [];
+                const listItems = (currentNode.data?.listItems as any[]) || [];
+                const listButtonText = (currentNode.data?.listButtonText as string) || "Options";
                 let messageText = currentNode.data?.message || "";
 
                 // Replace variables {{varName}} with session state
@@ -258,7 +260,16 @@ async function executeFlowSession(
                 }
 
                 if (messageText) {
-                    if (messageType === "interactive" && buttons.length > 0) {
+                    if (messageType === "list" && listItems.length > 0) {
+                        await sendWhatsAppList(
+                            whatsappConfig.phoneNumberId,
+                            whatsappConfig.accessToken,
+                            session.contactPhone,
+                            messageText,
+                            listButtonText,
+                            listItems
+                        );
+                    } else if (messageType === "interactive" && buttons.length > 0) {
                         await sendWhatsAppInteractive(
                             whatsappConfig.phoneNumberId,
                             whatsappConfig.accessToken,
@@ -304,42 +315,6 @@ async function executeFlowSession(
                     session.status = "completed";
                 } else {
                     currentNode = nodes.find((n: any) => n.id === outgoingEdge.target);
-                }
-
-            } else if (currentNode.type === "listMessageNode") {
-                const items = (currentNode.data?.items as any[]) || [];
-                const buttonLabel = (currentNode.data?.buttonLabel as string) || "View Options";
-                const footer = (currentNode.data?.footer as string) || "";
-                let messageText = (currentNode.data?.message as string) || "";
-
-                // Replace variables {{varName}} with session state
-                for (const [key, value] of Object.entries(session.state)) {
-                    messageText = messageText.replace(new RegExp(`{{${key}}}`, 'g'), String(value));
-                }
-
-                const validItems = items.filter((item: any) => item.title?.trim() !== "");
-
-                if (messageText && validItems.length > 0) {
-                    await sendWhatsAppList(
-                        whatsappConfig.phoneNumberId,
-                        whatsappConfig.accessToken,
-                        session.contactPhone,
-                        messageText,
-                        footer,
-                        buttonLabel,
-                        validItems
-                    );
-                } else if (messageText) {
-                    // Fallback to text if no items configured
-                    await sendWhatsAppText(whatsappConfig.phoneNumberId, whatsappConfig.accessToken, session.contactPhone, messageText);
-                }
-
-                const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
-                if (!nextNode) {
-                    currentNode = null;
-                    session.status = "completed";
-                } else {
-                    currentNode = nextNode;
                 }
 
             } else if (currentNode.type === "triggerNode") {
@@ -447,23 +422,12 @@ async function sendWhatsAppInteractive(phoneNumberId: string, accessToken: strin
     }
 }
 
-async function sendWhatsAppList(
-    phoneNumberId: string,
-    accessToken: string,
-    toPhone: string,
-    bodyText: string,
-    footerText: string,
-    buttonLabel: string,
-    items: { title: string; description?: string }[]
-) {
+async function sendWhatsAppList(phoneNumberId: string, accessToken: string, toPhone: string, text: string, buttonText: string, items: any[]) {
     const apiUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
 
-    // WhatsApp List Messages must have at least 1 and at most 10 items in one or more sections
-    const rows = items.slice(0, 10).map((item, index) => ({
-        id: `list_item_${index}`,
-        title: item.title.substring(0, 24),          // API limit: 24 chars
-        description: (item.description || "").substring(0, 72) // API limit: 72 chars
-    }));
+    // WhatsApp limits list items to 10
+    const validItems = items.slice(0, 10).filter(i => i.title && i.title.trim() !== "");
+    if (validItems.length === 0) return sendWhatsAppText(phoneNumberId, accessToken, toPhone, text);
 
     const listPayload = {
         messaging_product: "whatsapp",
@@ -472,14 +436,17 @@ async function sendWhatsAppList(
         type: "interactive",
         interactive: {
             type: "list",
-            body: { text: bodyText },
-            ...(footerText ? { footer: { text: footerText } } : {}),
+            body: { text },
             action: {
-                button: buttonLabel.substring(0, 20), // API limit: 20 chars
+                button: buttonText.substring(0, 20) || "Options", // Text of the button to click to open the list max 20 char
                 sections: [
                     {
-                        title: "Options",
-                        rows
+                        title: "Select an option", // Optional section title (defaults to Generic)
+                        rows: validItems.map((item, index) => ({
+                            id: item.id || `item_${index}`,
+                            title: item.title.substring(0, 24), // API limit 24 chars
+                            description: item.description ? item.description.substring(0, 72) : undefined // API limit 72 chars
+                        }))
                     }
                 ]
             }
@@ -499,7 +466,7 @@ async function sendWhatsAppList(
     console.log(`[ChatbotEngine] WhatsApp List API Response for ${toPhone}:`, data);
 
     if (!response.ok) {
-        console.error(`[ChatbotEngine] WhatsApp List API Error:`, data);
+        console.error(`[ChatbotEngine] WhatsApp API Error:`, data);
         throw new Error(`Meta List API Failed (Status ${response.status}): ${JSON.stringify(data.error)}`);
     }
 }

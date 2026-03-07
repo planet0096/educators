@@ -17,7 +17,7 @@ import {
     Panel
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload, Wand2, List } from "lucide-react";
+import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload, Wand2 } from "lucide-react";
 import toast from "react-hot-toast";
 import dagre from "dagre";
 
@@ -400,97 +400,82 @@ function FlowBuilderCanvas() {
                         </div>
                     </div>
 
-                    <div
-                        className="bg-white border border-violet-200 shadow-sm rounded-xl p-3 flex items-center gap-3 cursor-grab hover:ring-2 hover:ring-violet-500/20 transition-all hover:border-violet-500"
-                        onDragStart={(event) => {
-                            event.dataTransfer.setData('application/reactflow', 'listMessageNode');
-                            event.dataTransfer.effectAllowed = 'move';
-                        }}
-                        draggable
-                    >
-                        <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                            <List className="w-4 h-4 text-violet-600" />
+                    <div className="mt-auto pt-6 border-t border-zinc-100">
+                        <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-xl">
+                            <h4 className="text-xs font-bold text-indigo-900 mb-1">Pro Tip</h4>
+                            <p className="text-[10px] text-indigo-700">Connect output ports (bottom) to input ports (top) by dragging lines between nodes.</p>
                         </div>
-                        <div>
-                            <div className="text-sm font-bold text-zinc-900">List Message</div>
-                            <div className="text-[10px] text-zinc-500">Scrollable menu (10 options)</div>
-                        </div>
-                    </div>
-
-                    <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-xl">
-                        <h4 className="text-xs font-bold text-indigo-900 mb-1">Pro Tip</h4>
-                        <p className="text-[10px] text-indigo-700">Connect output ports (bottom) to input ports (top) by dragging lines between nodes.</p>
                     </div>
                 </div>
-            </div>
 
-            {/* React Flow Canvas */}
-            <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
-                <ReactFlow
-                    nodes={nodes}
-                    edges={edges}
-                    onNodesChange={onNodesChange}
-                    onEdgesChange={onEdgesChange}
-                    onConnect={onConnect}
-                    onInit={setReactFlowInstance}
-                    onDrop={onDrop}
-                    onDragOver={onDragOver}
-                    nodeTypes={nodeTypes as any}
-                    fitView
-                    attributionPosition="bottom-right"
-                    minZoom={0.5}
-                    maxZoom={1.5}
-                    className="bg-[#f8f9fa]" // Very subtle gray to make white nodes pop
-                >
-                    <Background color="#ccc" gap={20} size={1} />
-                    <Controls className="bg-white shadow-md border border-zinc-200 rounded-lg overflow-hidden fill-zinc-600" />
-                    {/* <MiniMap className="bg-white shadow-lg rounded-xl border border-zinc-200" zoomable pannable /> */}
-                </ReactFlow>
+                {/* React Flow Canvas */}
+                <div className="flex-1 h-full relative" ref={reactFlowWrapper}>
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        onNodesChange={onNodesChange}
+                        onEdgesChange={onEdgesChange}
+                        onConnect={onConnect}
+                        onInit={setReactFlowInstance}
+                        onDrop={onDrop}
+                        onDragOver={onDragOver}
+                        nodeTypes={nodeTypes as any}
+                        fitView
+                        attributionPosition="bottom-right"
+                        minZoom={0.5}
+                        maxZoom={1.5}
+                        className="bg-[#f8f9fa]" // Very subtle gray to make white nodes pop
+                    >
+                        <Background color="#ccc" gap={20} size={1} />
+                        <Controls className="bg-white shadow-md border border-zinc-200 rounded-lg overflow-hidden fill-zinc-600" />
+                        {/* <MiniMap className="bg-white shadow-lg rounded-xl border border-zinc-200" zoomable pannable /> */}
+                    </ReactFlow>
 
-                {/* Debug sidebar overlaid on React flow canvas */}
-                {showDebug && (
-                    <div className="absolute top-4 right-4 bottom-4 w-80 bg-white border border-zinc-200 rounded-2xl flex flex-col z-[100] shadow-2xl overflow-hidden">
-                        <div className="p-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50 shrink-0">
-                            <h3 className="font-bold text-sm text-zinc-900 flex items-center gap-2">
-                                <Activity className="w-4 h-4 text-indigo-500" />
-                                Live Execution Logs
-                            </h3>
-                            <button onClick={fetchSessions} disabled={loadingSessions} className="p-1.5 hover:bg-zinc-200 rounded-lg text-zinc-500 transition-colors disabled:opacity-50">
-                                <RefreshCw className={`w-4 h-4 ${loadingSessions ? 'animate-spin' : ''}`} />
-                            </button>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-zinc-50/50">
-                            {sessions.length === 0 ? (
-                                <div className="text-center text-zinc-500 text-sm py-8 flex flex-col items-center gap-2">
-                                    <Activity className="w-8 h-8 text-zinc-300" />
-                                    <p>No execution logs yet.</p>
-                                    <p className="text-xs text-zinc-400">Test your flow on WhatsApp to see live data here.</p>
-                                </div>
-                            ) : (
-                                sessions.map(sess => (
-                                    <div key={sess._id} className="border border-zinc-200 rounded-xl p-3 text-sm shadow-sm bg-white hover:border-indigo-200 transition-colors">
-                                        <div className="flex items-center justify-between mb-3">
-                                            <span className="font-semibold text-zinc-900 border border-zinc-200 px-2 py-0.5 rounded-md text-xs bg-zinc-50">+{sess.contactPhone}</span>
-                                            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${sess.status === 'active' ? 'bg-amber-100 text-amber-700 border border-amber-200' : sess.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
-                                                {sess.status}
-                                            </span>
-                                        </div>
-                                        <div className="text-xs text-zinc-600 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-medium text-zinc-500">Node</span>
-                                                <span className="font-mono text-[10px] bg-zinc-100 px-1.5 py-0.5 rounded text-zinc-700 truncate max-w-[150px]" title={sess.currentNodeId}>{sess.currentNodeId}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center pt-2 border-t border-zinc-100">
-                                                <span className="text-[10px] text-zinc-400">Last updated</span>
-                                                <span className="text-[10px] text-zinc-500 font-medium">{new Date(sess.updatedAt).toLocaleTimeString()}</span>
-                                            </div>
-                                        </div>
+                    {/* Debug sidebar overlaid on React flow canvas */}
+                    {showDebug && (
+                        <div className="absolute top-4 right-4 bottom-4 w-80 bg-white border border-zinc-200 rounded-2xl flex flex-col z-[100] shadow-2xl overflow-hidden">
+                            <div className="p-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50 shrink-0">
+                                <h3 className="font-bold text-sm text-zinc-900 flex items-center gap-2">
+                                    <Activity className="w-4 h-4 text-indigo-500" />
+                                    Live Execution Logs
+                                </h3>
+                                <button onClick={fetchSessions} disabled={loadingSessions} className="p-1.5 hover:bg-zinc-200 rounded-lg text-zinc-500 transition-colors disabled:opacity-50">
+                                    <RefreshCw className={`w-4 h-4 ${loadingSessions ? 'animate-spin' : ''}`} />
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-zinc-50/50">
+                                {sessions.length === 0 ? (
+                                    <div className="text-center text-zinc-500 text-sm py-8 flex flex-col items-center gap-2">
+                                        <Activity className="w-8 h-8 text-zinc-300" />
+                                        <p>No execution logs yet.</p>
+                                        <p className="text-xs text-zinc-400">Test your flow on WhatsApp to see live data here.</p>
                                     </div>
-                                ))
-                            )}
+                                ) : (
+                                    sessions.map(sess => (
+                                        <div key={sess._id} className="border border-zinc-200 rounded-xl p-3 text-sm shadow-sm bg-white hover:border-indigo-200 transition-colors">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <span className="font-semibold text-zinc-900 border border-zinc-200 px-2 py-0.5 rounded-md text-xs bg-zinc-50">+{sess.contactPhone}</span>
+                                                <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${sess.status === 'active' ? 'bg-amber-100 text-amber-700 border border-amber-200' : sess.status === 'completed' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                                                    {sess.status}
+                                                </span>
+                                            </div>
+                                            <div className="text-xs text-zinc-600 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-medium text-zinc-500">Node</span>
+                                                    <span className="font-mono text-[10px] bg-zinc-100 px-1.5 py-0.5 rounded text-zinc-700 truncate max-w-[150px]" title={sess.currentNodeId}>{sess.currentNodeId}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center pt-2 border-t border-zinc-100">
+                                                    <span className="text-[10px] text-zinc-400">Last updated</span>
+                                                    <span className="text-[10px] text-zinc-500 font-medium">{new Date(sess.updatedAt).toLocaleTimeString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* JSON Import/Export Modal */}
@@ -502,7 +487,10 @@ function FlowBuilderCanvas() {
                                 <Code className="w-5 h-5 text-indigo-500" />
                                 Flow JSON Source
                             </h2>
-                            <button onClick={() => setShowJsonModal(false)} className="p-2 hover:bg-zinc-200 rounded-lg text-zinc-500 transition-colors">
+                            <button
+                                onClick={() => setShowJsonModal(false)}
+                                className="p-2 hover:bg-zinc-200 rounded-lg text-zinc-500 transition-colors"
+                            >
                                 <X className="w-5 h-5" />
                             </button>
                         </div>
@@ -531,10 +519,16 @@ function FlowBuilderCanvas() {
                                 Copy to Clipboard
                             </button>
                             <div className="flex gap-3">
-                                <button onClick={() => setShowJsonModal(false)} className="px-4 py-2 rounded-xl text-sm font-medium bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition-colors">
+                                <button
+                                    onClick={() => setShowJsonModal(false)}
+                                    className="px-4 py-2 rounded-xl text-sm font-medium bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-50 transition-colors"
+                                >
                                     Cancel
                                 </button>
-                                <button onClick={handleImportJson} className="px-5 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm">
+                                <button
+                                    onClick={handleImportJson}
+                                    className="px-5 py-2 rounded-xl text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm"
+                                >
                                     <Upload className="w-4 h-4" />
                                     Import JSON to Canvas
                                 </button>
