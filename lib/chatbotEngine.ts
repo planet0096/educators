@@ -45,7 +45,7 @@ export const processIncomingMessage = async (
                 if (Array.isArray(flow.keywords)) {
                     keywordList = flow.keywords;
                 } else if (typeof flow.keywords === "string") {
-                    keywordList = flow.keywords.split(",").map(k => k.trim());
+                    keywordList = flow.keywords.split(",").map((k: string) => k.trim());
                 }
 
                 if (keywordList.length > 0) {
