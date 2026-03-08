@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
-import { Calendar, Plus, Loader2, Play, Pause, Edit, Trash2, Zap, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { Calendar, Plus, Loader2, Play, Pause, Edit, Trash2, Zap, CheckCircle2, XCircle, RefreshCw, Clock } from "lucide-react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 
@@ -295,10 +295,10 @@ export default function CalcomAutomationsPage() {
                                         {logs.map(log => (
                                             <tr key={log._id} className="hover:bg-zinc-50 transition-colors">
                                                 <td className="px-4 py-3">
-                                                    {log.status === "success"
-                                                        ? <span className="flex items-center gap-1.5 text-emerald-600 font-semibold text-xs"><CheckCircle2 className="w-4 h-4" /> Success</span>
-                                                        : <span className="flex items-center gap-1.5 text-red-500 font-semibold text-xs" title={log.errorMessage}><XCircle className="w-4 h-4" /> Failed ({log.errorMessage})</span>
-                                                    }
+                                                    {log.status === "success" && <span className="flex items-center gap-1.5 text-emerald-600 font-semibold text-xs"><CheckCircle2 className="w-4 h-4" /> Success</span>}
+                                                    {log.status === "failed" && <span className="flex items-center gap-1.5 text-red-500 font-semibold text-xs" title={log.errorMessage}><XCircle className="w-4 h-4" /> Failed</span>}
+                                                    {log.status === "scheduled" && <span className="flex items-center gap-1.5 text-orange-600 font-semibold text-xs"><Clock className="w-4 h-4" /> Upcoming</span>}
+                                                    {log.status === "cancelled" && <span className="flex items-center gap-1.5 text-zinc-500 font-semibold text-xs" title={log.errorMessage}><Trash2 className="w-4 h-4" /> Cancelled</span>}
                                                 </td>
                                                 <td className="px-4 py-3 font-medium text-zinc-800 max-w-[140px] truncate">{log.ruleName || "—"}</td>
                                                 <td className="px-4 py-3 text-zinc-600">
@@ -308,7 +308,9 @@ export default function CalcomAutomationsPage() {
                                                 <td className="px-4 py-3 font-mono text-xs text-purple-700 bg-purple-50 rounded px-2 max-w-[120px] truncate">{log.templateName}</td>
                                                 <td className="px-4 py-3 text-xs text-zinc-500">{log.triggerEvent?.replace("booking.", "").replace("_", " ") || "—"}</td>
                                                 <td className="px-4 py-3 text-xs text-zinc-400 whitespace-nowrap">
-                                                    {log.executedAt ? new Date(log.executedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+                                                    {log.status === "scheduled" && log.scheduledFor
+                                                        ? new Date(log.scheduledFor).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                                                        : log.executedAt ? new Date(log.executedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
                                                 </td>
                                             </tr>
                                         ))}
@@ -410,6 +412,7 @@ export default function CalcomAutomationsPage() {
                                     <option value="calcom_booking_created">📅 Booking Created</option>
                                     <option value="calcom_booking_cancelled">❌ Booking Cancelled</option>
                                     <option value="calcom_booking_rescheduled">🔄 Booking Rescheduled</option>
+                                    <option value="calcom_reminder">⏰ Meeting Reminder</option>
                                 </select>
                             </div>
                             <div>

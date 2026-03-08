@@ -9,9 +9,13 @@ export interface ICalComLog extends Document {
     inviteeName: string;
     inviteePhone: string;
     templateName: string;
-    status: "success" | "failed";
+    status: "success" | "failed" | "scheduled" | "cancelled";
     errorMessage?: string;
     executedAt: Date;
+    scheduledFor?: Date;
+    qstashMessageId?: string;
+    flowState?: any; // To track where execution paused
+    inviteeTimeZone?: string;
 }
 
 const CalComLogSchema: Schema = new Schema(
@@ -24,8 +28,12 @@ const CalComLogSchema: Schema = new Schema(
         inviteeName: { type: String },
         inviteePhone: { type: String },
         templateName: { type: String },
-        status: { type: String, enum: ["success", "failed"], required: true },
+        status: { type: String, enum: ["success", "failed", "scheduled", "cancelled"], required: true },
         errorMessage: { type: String },
+        scheduledFor: { type: Date },
+        qstashMessageId: { type: String },
+        flowState: { type: Schema.Types.Mixed }, // Arbitrary JSON
+        inviteeTimeZone: { type: String },
         executedAt: { type: Date, default: Date.now },
     },
     { timestamps: false }

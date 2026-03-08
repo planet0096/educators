@@ -59,6 +59,7 @@ export async function POST(req: Request) {
         const eventTypeName = cleanEventName.length > 30 ? cleanEventName.substring(0, 27) + "..." : cleanEventName;
         const eventTypeId = payload.eventType?.id ? String(payload.eventType.id) : "";
         const bookingUid = payload.uid || "";
+        const inviteeTimeZone = invitee.timeZone || payload.organizer?.timeZone || "UTC";
 
         // Find the educator's integration by Cal.com userId or username
         let integration = await CalComIntegration.findOne({ calComUserId });
@@ -81,6 +82,39 @@ export async function POST(req: Request) {
 
         if (rawLogId) await CalComWebhookLog.findByIdAndUpdate(rawLogId, { processed: true });
 
+        // If this is a Cancellation or Reschedule, proactively hunt down pending QStash jobs and kill them
+        if (normalizedEvent === "booking.cancelled" || normalizedEvent === "booking.rescheduled") {
+            try {
+                const pendingLogs = await CalComLog.find({
+                    educatorId: educatorUserId,
+                    bookingUid,
+                    status: "scheduled",
+                    qstashMessageId: { $exists: true, $ne: null }
+                });
+
+                if (pendingLogs.length > 0 && process.env.QSTASH_TOKEN) {
+                    const { Client } = await import("@upstash/qstash");
+                    const qstash = new Client({ token: process.env.QSTASH_TOKEN });
+
+                    for (const log of pendingLogs) {
+                        try {
+                            await qstash.messages.delete(log.qstashMessageId!);
+                            console.log(`[CalCom Webhook] Successfully revoked QStash job ${log.qstashMessageId} for cancelled/rescheduled booking ${bookingUid}`);
+                        } catch (revokeErr) {
+                            console.error(`[CalCom Webhook] Failed to revoke QStash job ${log.qstashMessageId}`, revokeErr);
+                        }
+                    }
+
+                    await CalComLog.updateMany(
+                        { _id: { $in: pendingLogs.map(l => l._id) } },
+                        { $set: { status: "cancelled", errorMessage: `Job revoked proactively because the booking was ${normalizedEvent.split('.')[1]}` } }
+                    );
+                }
+            } catch (err) {
+                console.error("[CalCom Webhook] Error cleaning up QStash tasks:", err);
+            }
+        }
+
         const bookingPayload: CalComBookingPayload = {
             triggerEvent: normalizedEvent,
             inviteeName,
@@ -95,6 +129,7 @@ export async function POST(req: Request) {
             eventTypeName,
             eventTypeId,
             bookingUid,
+            inviteeTimeZone,
         };
 
         // Run all matching Cal.com automation flows
