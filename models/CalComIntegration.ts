@@ -2,11 +2,9 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface ICalComIntegration extends Document {
     user: mongoose.Types.ObjectId;
-    accessToken: string;
-    refreshToken: string;
-    calComUserId: number;
+    apiKey: string;
+    calComUserId?: number;
     calComUsername: string;
-    expiry: Date;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -14,11 +12,9 @@ export interface ICalComIntegration extends Document {
 const CalComIntegrationSchema: Schema = new Schema(
     {
         user: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
-        accessToken: { type: String, required: true },
-        refreshToken: { type: String, required: true },
-        calComUserId: { type: Number, required: true },
-        calComUsername: { type: String, required: true },
-        expiry: { type: Date, required: true },
+        apiKey: { type: String, required: true },
+        calComUserId: { type: Number },
+        calComUsername: { type: String, default: "Connected" },
     },
     { timestamps: true }
 );

@@ -7,7 +7,6 @@ export async function POST(req: Request) {
     try {
         const body = await req.json();
 
-        // 1. Verify the webhook payload type
         const { triggerEvent, payload } = body;
 
         if (triggerEvent !== "booking.created") {
@@ -15,6 +14,7 @@ export async function POST(req: Request) {
         }
 
         const calComUserId = payload.user?.id || payload.organizer?.id;
+        const calComUsername = payload.organizer?.username || payload.user?.username;
 
         // Extract Invitee Information
         const invitee = payload.attendees?.[0] || {};
@@ -26,21 +26,23 @@ export async function POST(req: Request) {
             return NextResponse.json({ message: "No phone number, skipped WhatsApp message" }, { status: 200 });
         }
 
-        // Clean phone number (remove +, spaces, dashes, parentheses)
         const recipientPhone = meetingSourcePhone.replace(/[\+\-\s\(\)]/g, "");
 
         await dbConnect();
 
-        // 2. Find the user ID who owns this Cal.com account
-        const integration = await CalComIntegration.findOne({ calComUserId: calComUserId });
+        // Find integration by Cal.com userId, or fallback to username
+        let integration = await CalComIntegration.findOne({ calComUserId: calComUserId });
+        if (!integration && calComUsername) {
+            integration = await CalComIntegration.findOne({ calComUsername: calComUsername });
+        }
+
         if (!integration) {
-            console.log(`No integration found for Cal.com user ID: ${calComUserId}`);
+            console.log(`No integration found for Cal.com user ID: ${calComUserId} / username: ${calComUsername}`);
             return NextResponse.json({ error: "Integration not found" }, { status: 404 });
         }
 
         const userId = integration.user;
 
-        // 3. Find their WhatsApp config to send the message
         const waConfig = await WhatsAppConfig.findOne({ user: userId });
         if (!waConfig) {
             console.log(`User ${userId} does not have WhatsApp configured.`);
@@ -49,28 +51,22 @@ export async function POST(req: Request) {
 
         const { phoneNumberId, accessToken } = waConfig;
 
-        // 4. Send the WhatsApp Template Message
         const apiUrl = `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`;
 
-        // Meeting details
-        const educatorName = payload.organizer?.name || "Educator";
         const meetingDate = new Date(payload.startTime).toLocaleString('en-US', {
             weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
         });
         const meetingLink = payload.videoCallData?.url || payload.location || "Check your calendar";
 
-        // IMPORTANT: We use a placeholder template name 'booking_confirmation_template'
-        // The user should replace this with their actual approved template name in WhatsApp Manager.
-        // It assumes 3 text variables: {{1}} Invitee Name, {{2}} Meeting Date, {{3}} Meeting Link
+        // NOTE: Replace "booking_confirmation_template" with your actual approved WhatsApp template name
+        // The template should have 3 body variables: {{1}} Name, {{2}} Date, {{3}} Link
         const messagePayload = {
             messaging_product: "whatsapp",
             to: recipientPhone,
             type: "template",
             template: {
-                name: "booking_confirmation_template", // TODO: Replace with actual template name
-                language: {
-                    code: "en_US" // Or appropriate language code
-                },
+                name: "booking_confirmation_template",
+                language: { code: "en_US" },
                 components: [
                     {
                         type: "body",
