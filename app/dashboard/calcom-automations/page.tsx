@@ -13,11 +13,13 @@ const TRIGGER_LABELS: Record<string, { label: string; icon: string; color: strin
 };
 
 export default function CalcomAutomationsPage() {
-    const [tab, setTab] = useState<"workflows" | "logs">("workflows");
+    const [tab, setTab] = useState<"workflows" | "logs" | "troubleshoot">("workflows");
     const [flows, setFlows] = useState<any[]>([]);
     const [logs, setLogs] = useState<any[]>([]);
+    const [troubleshootLogs, setTroubleshootLogs] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [logsLoading, setLogsLoading] = useState(false);
+    const [troubleshootLoading, setTroubleshootLoading] = useState(false);
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [newFlowName, setNewFlowName] = useState("");
@@ -27,6 +29,7 @@ export default function CalcomAutomationsPage() {
 
     useEffect(() => { fetchFlows(); }, []);
     useEffect(() => { if (tab === "logs" && logs.length === 0) fetchLogs(); }, [tab]);
+    useEffect(() => { if (tab === "troubleshoot" && troubleshootLogs.length === 0) fetchTroubleshoot(); }, [tab]);
 
     const fetchFlows = async () => {
         try {
@@ -48,6 +51,17 @@ export default function CalcomAutomationsPage() {
             if (data.success) setLogs(data.logs);
         } finally {
             setLogsLoading(false);
+        }
+    };
+
+    const fetchTroubleshoot = async () => {
+        setTroubleshootLoading(true);
+        try {
+            const res = await fetch("/api/calcom/troubleshoot");
+            const data = await res.json();
+            if (data.success) setTroubleshootLogs(data.logs);
+        } finally {
+            setTroubleshootLoading(false);
         }
     };
 
@@ -136,10 +150,12 @@ export default function CalcomAutomationsPage() {
 
             {/* Tabs */}
             <div className="flex border-b border-zinc-200">
-                {(["workflows", "logs"] as const).map(t => (
+                {(["workflows", "logs", "troubleshoot"] as const).map(t => (
                     <button key={t} onClick={() => setTab(t)}
                         className={`px-5 py-2.5 text-sm font-semibold capitalize transition-colors border-b-2 -mb-px ${tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-zinc-500 hover:text-zinc-800"}`}>
-                        {t === "workflows" ? "⚡ Workflows" : "📋 Execution History"}
+                        {t === "workflows" && "⚡ Workflows"}
+                        {t === "logs" && "📋 Execution History"}
+                        {t === "troubleshoot" && "🛠️ Troubleshoot Webhooks"}
                     </button>
                 ))}
             </div>
@@ -281,7 +297,7 @@ export default function CalcomAutomationsPage() {
                                                 <td className="px-4 py-3">
                                                     {log.status === "success"
                                                         ? <span className="flex items-center gap-1.5 text-emerald-600 font-semibold text-xs"><CheckCircle2 className="w-4 h-4" /> Success</span>
-                                                        : <span className="flex items-center gap-1.5 text-red-500 font-semibold text-xs" title={log.errorMessage}><XCircle className="w-4 h-4" /> Failed</span>
+                                                        : <span className="flex items-center gap-1.5 text-red-500 font-semibold text-xs" title={log.errorMessage}><XCircle className="w-4 h-4" /> Failed ({log.errorMessage})</span>
                                                     }
                                                 </td>
                                                 <td className="px-4 py-3 font-medium text-zinc-800 max-w-[140px] truncate">{log.ruleName || "—"}</td>
@@ -304,6 +320,59 @@ export default function CalcomAutomationsPage() {
                                     <strong>Failed rows:</strong> Hover over the ❌ icon to see the actual error message mapping variables or formatting phones.
                                 </div>
                             )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* ===== TROUBLESHOOT TAB ===== */}
+            {tab === "troubleshoot" && (
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-lg font-bold text-zinc-900">Raw Webhook Logs</h3>
+                            <p className="text-sm text-zinc-500">See exactly what Cal.com is sending to your server to debug missing phone numbers or ignored events.</p>
+                        </div>
+                        <button onClick={fetchTroubleshoot} disabled={troubleshootLoading} className="flex items-center gap-1.5 text-sm bg-zinc-100 hover:bg-zinc-200 text-zinc-700 px-4 py-2 rounded-lg font-medium transition-colors">
+                            <RefreshCw className={`w-4 h-4 ${troubleshootLoading ? "animate-spin" : ""}`} /> Refresh
+                        </button>
+                    </div>
+
+                    {troubleshootLoading ? (
+                        <div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-zinc-400" /></div>
+                    ) : troubleshootLogs.length === 0 ? (
+                        <div className="text-center py-16 bg-white border border-zinc-200 border-dashed rounded-2xl">
+                            <span className="text-4xl mb-3 block">🛠️</span>
+                            <h3 className="font-semibold text-zinc-600 mb-1">No webhooks received yet</h3>
+                            <p className="text-sm text-zinc-400">Make test bookings on your connected Cal.com account and refresh here.</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {troubleshootLogs.map((log) => (
+                                <div key={log._id} className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-sm">
+                                    <div className="bg-zinc-50 border-b border-zinc-200 px-4 py-3 flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-mono text-xs font-bold bg-zinc-200 text-zinc-700 px-2 py-0.5 rounded">{log.triggerEvent}</span>
+                                            <span className="text-xs text-zinc-500">{new Date(log.receivedAt).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {log.processed ? (
+                                                <span className="text-xs font-medium text-emerald-600 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Processed</span>
+                                            ) : (
+                                                <span className="text-xs font-medium text-rose-500 flex items-center gap-1" title={log.errorReason}><XCircle className="w-3.5 h-3.5" /> Skipped / Ignored</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {log.errorReason && (
+                                        <div className="bg-rose-50 px-4 py-2 text-xs text-rose-700 border-b border-rose-100">
+                                            <strong>Reason for skipping:</strong> {log.errorReason}
+                                        </div>
+                                    )}
+                                    <div className="p-4 overflow-x-auto max-h-96">
+                                        <pre className="text-[11px] font-mono text-zinc-700">{JSON.stringify(log.payload, null, 2)}</pre>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </div>

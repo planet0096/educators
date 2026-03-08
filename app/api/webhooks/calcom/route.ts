@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/db";
 import CalComIntegration from "@/models/CalComIntegration";
+import CalComWebhookLog from "@/models/CalComWebhookLog";
 import { runCalComFlows, CalComBookingPayload } from "@/lib/calcomFlowEngine";
 
 export async function POST(req: Request) {
@@ -36,9 +37,23 @@ export async function POST(req: Request) {
         const meetingLink = payload.videoCallData?.url || payload.location || "";
         const organizerName = payload.organizer?.name || "Your Educator";
         const eventTypeName = payload.eventType?.title || payload.title || "Meeting";
+        const eventTypeId = payload.eventType?.id ? String(payload.eventType.id) : "";
         const bookingUid = payload.uid || "";
 
         await dbConnect();
+
+        // 1. Immediately log the raw webhook for troubleshooting
+        let rawLogId: string | null = null;
+        try {
+            const rawLog = await CalComWebhookLog.create({
+                triggerEvent,
+                payload,
+                processed: false,
+            });
+            rawLogId = rawLog._id.toString();
+        } catch (e) {
+            console.error("[CalCom Webhook] Failed to save raw log", e);
+        }
 
         // Find the educator's integration by Cal.com userId or username
         let integration = await CalComIntegration.findOne({ calComUserId });
@@ -55,8 +70,11 @@ export async function POST(req: Request) {
 
         if (!inviteePhone) {
             console.log(`[CalCom Webhook] No phone in booking ${bookingUid}. Skipping message flows.`);
+            if (rawLogId) await CalComWebhookLog.findByIdAndUpdate(rawLogId, { errorReason: "No phone number found in payload" });
             return NextResponse.json({ message: "No phone number — flows skipped" }, { status: 200 });
         }
+
+        if (rawLogId) await CalComWebhookLog.findByIdAndUpdate(rawLogId, { processed: true });
 
         const bookingPayload: CalComBookingPayload = {
             triggerEvent,
@@ -70,6 +88,7 @@ export async function POST(req: Request) {
             calComUserId,
             calComUsername,
             eventTypeName,
+            eventTypeId,
             bookingUid,
         };
 

@@ -18,6 +18,7 @@ export interface CalComBookingPayload {
     calComUserId: number;
     calComUsername: string;
     eventTypeName?: string;
+    eventTypeId?: string;
     bookingUid: string;
 }
 
@@ -203,15 +204,24 @@ export async function runCalComFlows(
         return;
     }
 
-    const flows = await AutomationFlow.find({
+    // Fetch all active Cal.com flows for this user and trigger type
+    let flows = await AutomationFlow.find({
         educatorId: educatorUserId,
         source: "calcom",
         triggerType,
         isActive: true,
     });
 
+    // Filter flows by eventTypeId if the flow has specifically defined calcomEventTypes
+    if (bookingPayload.eventTypeId) {
+        flows = flows.filter(flow => {
+            if (!flow.calcomEventTypes || flow.calcomEventTypes.length === 0) return true; // No filter = applies to all
+            return flow.calcomEventTypes.includes(bookingPayload.eventTypeId);
+        });
+    }
+
     if (flows.length === 0) {
-        console.log(`[CalComEngine] No active flows for trigger: ${triggerType}`);
+        console.log(`[CalComEngine] No active matching flows for trigger: ${triggerType} / eventType: ${bookingPayload.eventTypeId}`);
         return;
     }
 

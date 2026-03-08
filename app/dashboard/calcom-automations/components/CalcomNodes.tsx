@@ -18,6 +18,38 @@ const CALCOM_VARIABLES = [
 export const CalcomTriggerNode = memo(({ data, isConnectable, id }: NodeProps) => {
     const { updateNodeData } = useReactFlow();
 
+    const [eventTypes, setEventTypes] = useState<any[]>([]);
+    const [loadingEvents, setLoadingEvents] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+        const fetchEventTypes = async () => {
+            setLoadingEvents(true);
+            try {
+                const res = await fetch("/api/calcom/event-types");
+                const json = await res.json();
+                if (isMounted && json.success) {
+                    setEventTypes(json.eventTypes);
+                }
+            } catch (err) {
+                console.error("Failed to load event types");
+            } finally {
+                if (isMounted) setLoadingEvents(false);
+            }
+        };
+        fetchEventTypes();
+        return () => { isMounted = false; };
+    }, []);
+
+    const selectedEvents: string[] = (data?.calcomEventTypes as string[]) || [];
+
+    const toggleEvent = (eventId: string) => {
+        const newEvents = selectedEvents.includes(eventId)
+            ? selectedEvents.filter(e => e !== eventId)
+            : [...selectedEvents, eventId];
+        updateNodeData(id, { calcomEventTypes: newEvents });
+    };
+
     return (
         <div className="bg-white border-2 border-blue-500 rounded-xl shadow-lg w-72 overflow-hidden">
             <div className="bg-blue-600 text-white p-3 flex items-center gap-2">
@@ -37,6 +69,31 @@ export const CalcomTriggerNode = memo(({ data, isConnectable, id }: NodeProps) =
                     <option value="calcom_booking_rescheduled">🔄 Booking Rescheduled</option>
                     <option value="calcom_reminder">⏰ Meeting Reminder</option>
                 </select>
+
+                <div className="space-y-1.5 pt-2 border-t border-zinc-100">
+                    <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Which Event Types?</div>
+                    <p className="text-[10px] text-zinc-400 leading-tight mb-2">Leave blank to trigger for ALL meetings, or select specific ones.</p>
+
+                    {loadingEvents ? (
+                        <div className="flex items-center gap-2 text-xs text-zinc-500"><Loader2 className="w-3 h-3 animate-spin" /> Loading events...</div>
+                    ) : eventTypes.length === 0 ? (
+                        <div className="text-[10px] text-zinc-500 italic">No event types found on your Cal.com</div>
+                    ) : (
+                        <div className="max-h-32 overflow-y-auto space-y-1 pr-1 bg-zinc-50 p-1.5 rounded-lg border border-zinc-100 nodrag">
+                            {eventTypes.map(et => (
+                                <label key={et.id} className="flex items-start gap-2 text-[11px] text-zinc-700 cursor-pointer hover:bg-zinc-100 p-1 rounded transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedEvents.includes(String(et.id))}
+                                        onChange={() => toggleEvent(String(et.id))}
+                                        className="mt-0.5 rounded border-zinc-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0"
+                                    />
+                                    <span className="leading-tight">{et.title} <span className="text-zinc-400">({et.length}m)</span></span>
+                                </label>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-2.5 space-y-1.5">
                     <div className="text-[10px] font-bold text-blue-700 uppercase tracking-wider mb-1">

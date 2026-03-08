@@ -8,7 +8,7 @@ export interface IAutomationFlow extends Document {
     source: "chatbot" | "calcom";
     triggerType: "keyword" | "first_contact" | "catch_all" | "calcom_booking_created" | "calcom_booking_cancelled" | "calcom_booking_rescheduled" | "calcom_reminder";
     keywords?: string[];
-    calcomEventTypeId?: string;
+    calcomEventTypes?: string[];
     flowData: any;
     createdAt: Date;
     updatedAt: Date;
@@ -27,7 +27,7 @@ const AutomationFlowSchema: Schema = new Schema(
             default: "keyword"
         },
         keywords: [{ type: String }],
-        calcomEventTypeId: { type: String, default: "" },
+        calcomEventTypes: [{ type: String }],
         flowData: { type: Schema.Types.Mixed, default: { nodes: [], edges: [] } },
     },
     { timestamps: true }
