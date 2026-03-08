@@ -56,25 +56,37 @@ async function sendWhatsAppTemplate(
     languageCode: string,
     variables: string[]
 ) {
-    const parameters = variables.map((v) => ({ type: "text", text: v }));
+    const parameters = variables.map((v) => ({ type: "text", text: v == null ? "" : String(v) }));
+
+    const payload = {
+        messaging_product: "whatsapp",
+        to,
+        type: "template",
+        template: {
+            name: templateName,
+            language: { code: languageCode },
+            components: parameters.length > 0 ? [{ type: "body", parameters }] : [],
+        },
+    };
+
+    console.log("[CalComEngine] Sending WA Template Payload:", JSON.stringify(payload, null, 2));
+
     const res = await fetch(`https://graph.facebook.com/v19.0/${phoneNumberId}/messages`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-            messaging_product: "whatsapp",
-            to,
-            type: "template",
-            template: {
-                name: templateName,
-                language: { code: languageCode },
-                components: parameters.length > 0 ? [{ type: "body", parameters }] : [],
-            },
-        }),
+        body: JSON.stringify(payload),
     });
+
     const data = await res.json();
     if (!res.ok) {
-        console.error("[CalComEngine] WhatsApp template API error:", data);
-        throw new Error(data?.error?.message || "WhatsApp template API error");
+        console.error("[CalComEngine] WhatsApp template API error:", JSON.stringify(data, null, 2));
+
+        // Extract detailed parameter failure reason if available
+        let detailedError = data?.error?.message || "WhatsApp template API error";
+        if (data?.error?.error_data?.details) {
+            detailedError += ` (Details: ${data.error.error_data.details})`;
+        }
+        throw new Error(detailedError);
     }
     return data;
 }
