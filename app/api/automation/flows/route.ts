@@ -12,10 +12,17 @@ export async function GET(req: NextRequest) {
 
         await dbConnect();
 
-        // Filter by source if provided (?source=calcom or ?source=chatbot)
+        // Filter by source if provided
+        // - ?source=calcom → exact match (only cal flows)
+        // - ?source=chatbot → exclude cal flows (includes legacy flows with no source)
         const source = req.nextUrl.searchParams.get("source");
         const query: any = { educatorId: session.user.id };
-        if (source) query.source = source;
+        if (source === "calcom") {
+            query.source = "calcom";
+        } else if (source === "chatbot") {
+            // Legacy flows were created without a source field — include those too
+            query.source = { $nin: ["calcom"] };
+        }
 
         const flows = await AutomationFlow.find(query).sort({ createdAt: -1 });
 
