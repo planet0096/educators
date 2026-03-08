@@ -8,7 +8,7 @@ export async function GET(req: Request) {
         const session = await auth();
 
         if (!session?.user?.id) {
-            console.error("[CalCom Callback] No session found - user must be logged in.");
+            console.error("[CalCom Callback] No session found.");
             return NextResponse.redirect(new URL("/login", req.url));
         }
 
@@ -18,11 +18,10 @@ export async function GET(req: Request) {
 
         if (error) {
             console.error("[CalCom Callback] Cal.com returned error:", error);
-            return NextResponse.redirect(new URL("/dashboard/integrations?error=" + error, req.url));
+            return NextResponse.redirect(new URL("/dashboard/integrations?error=" + encodeURIComponent(error), req.url));
         }
 
         if (!code) {
-            console.error("[CalCom Callback] No code in query params");
             return NextResponse.redirect(new URL("/dashboard/integrations?error=no_code", req.url));
         }
 
@@ -30,81 +29,72 @@ export async function GET(req: Request) {
         const clientSecret = process.env.CALCOM_CLIENT_SECRET;
 
         if (!clientId || !clientSecret) {
-            console.error("[CalCom Callback] Missing CALCOM_CLIENT_ID or CALCOM_CLIENT_SECRET env vars");
-            return NextResponse.redirect(new URL("/dashboard/integrations?error=not_configured", req.url));
+            return NextResponse.redirect(new URL("/dashboard/integrations?error=missing_env_vars", req.url));
         }
 
-        // Determine redirect URI
         const url = new URL(req.url);
         const redirectUri = `${url.protocol}//${url.host}/api/calcom/callback`;
 
-        console.log("[CalCom Callback] Exchanging code for token. Redirect URI:", redirectUri);
+        // --- Attempt 1: app.cal.com endpoint ---
+        let access_token: string | undefined;
+        let refresh_token: string | undefined;
+        let expires_in: number | undefined;
+        let tokenErrorMsg = "";
 
-        // 1. Exchange code for token
-        // Note: Using app.cal.com endpoint which is confirmed working
-        const tokenResponse = await fetch("https://app.cal.com/api/auth/oauth/token", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                client_id: clientId,
-                client_secret: clientSecret,
-                redirect_uri: redirectUri,
-                grant_type: "authorization_code",
-                code: code,
-            }),
-        });
+        const endpoints = [
+            "https://app.cal.com/api/auth/oauth/token",
+            "https://api.cal.com/v2/oauth/token",
+        ];
 
-        const tokenData = await tokenResponse.json();
-        console.log("[CalCom Callback] Token response status:", tokenResponse.status, "body:", JSON.stringify(tokenData));
+        for (const endpoint of endpoints) {
+            const tokenResponse = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                    redirect_uri: redirectUri,
+                    grant_type: "authorization_code",
+                    code: code,
+                }),
+            });
 
-        if (!tokenResponse.ok) {
-            console.error("[CalCom Callback] Token exchange failed:", tokenData);
-            return NextResponse.redirect(new URL("/dashboard/integrations?error=token_exchange_failed", req.url));
+            const tokenData = await tokenResponse.json();
+            console.log(`[CalCom Callback] ${endpoint} => status:${tokenResponse.status} body:`, JSON.stringify(tokenData));
+
+            if (tokenResponse.ok && tokenData.access_token) {
+                access_token = tokenData.access_token;
+                refresh_token = tokenData.refresh_token;
+                expires_in = tokenData.expires_in;
+                break;
+            } else {
+                tokenErrorMsg = `${endpoint} => ${tokenResponse.status}: ${JSON.stringify(tokenData)}`;
+            }
         }
-
-        const { access_token, refresh_token, expires_in } = tokenData;
 
         if (!access_token) {
-            console.error("[CalCom Callback] No access_token in response:", tokenData);
-            return NextResponse.redirect(new URL("/dashboard/integrations?error=no_access_token", req.url));
+            // Surface the actual error in the URL params so user can share it
+            const safeMsg = encodeURIComponent(tokenErrorMsg.slice(0, 200));
+            return NextResponse.redirect(new URL(`/dashboard/integrations?error=token_failed&detail=${safeMsg}`, req.url));
         }
 
-        // 2. Fetch the connected user's Cal.com profile
-        // Try v2/me first, fallback to v1
-        let calComUserId: number | undefined;
-        let calComUsername: string = "Unknown";
+        // --- Fetch Cal.com user profile ---
+        let calComUserId: number = 0;
+        let calComUsername: string = "Connected";
 
-        const meResV2 = await fetch("https://api.cal.com/v2/me", {
-            headers: {
-                Authorization: `Bearer ${access_token}`,
-                "cal-api-version": "2024-08-13",
-            },
-        });
-        const meDataV2 = await meResV2.json();
-        console.log("[CalCom Callback] /v2/me response:", JSON.stringify(meDataV2));
-
-        if (meResV2.ok && (meDataV2?.data?.id || meDataV2?.id)) {
-            calComUserId = meDataV2?.data?.id || meDataV2?.id;
-            calComUsername = meDataV2?.data?.username || meDataV2?.data?.email || meDataV2?.username || "Unknown";
-        } else {
-            // Fallback to v1
-            const meResV1 = await fetch("https://api.cal.com/v1/me?apiKey=" + access_token);
-            const meDataV1 = await meResV1.json();
-            console.log("[CalCom Callback] /v1/me response:", JSON.stringify(meDataV1));
-            calComUserId = meDataV1?.user?.id || meDataV1?.id;
-            calComUsername = meDataV1?.user?.username || meDataV1?.user?.email || meDataV1?.username || "Unknown";
+        try {
+            const meRes = await fetch("https://api.cal.com/v2/me", {
+                headers: { Authorization: `Bearer ${access_token}`, "cal-api-version": "2024-08-13" },
+            });
+            const meData = await meRes.json();
+            console.log("[CalCom Callback] /v2/me:", JSON.stringify(meData));
+            calComUserId = meData?.data?.id || meData?.id || 0;
+            calComUsername = meData?.data?.username || meData?.data?.email || meData?.username || "Connected";
+        } catch (meErr) {
+            console.warn("[CalCom Callback] Could not fetch profile, proceeding without it.");
         }
 
-        // If we still can't get the user ID, we store a placeholder so connection still succeeds
-        // This can happen if the token endpoint uses a different format
-        if (!calComUserId) {
-            console.warn("[CalCom Callback] Could not determine calComUserId. Storing placeholder.");
-            calComUserId = 0;
-        }
-
-        // 3. Save to database
+        // --- Save to DB ---
         await dbConnect();
 
         const expiryDate = new Date();
@@ -123,11 +113,11 @@ export async function GET(req: Request) {
             { upsert: true, new: true }
         );
 
-        console.log("[CalCom Callback] Integration saved successfully for user:", session.user.id);
-
+        console.log("[CalCom Callback] ✅ Integration saved for user:", session.user.id);
         return NextResponse.redirect(new URL("/dashboard/integrations?calcom_success=true", req.url));
+
     } catch (err: any) {
         console.error("[CalCom Callback] Unexpected error:", err?.message, err?.stack);
-        return NextResponse.redirect(new URL("/dashboard/integrations?error=calcom_internal_error", req.url));
+        return NextResponse.redirect(new URL("/dashboard/integrations?error=exception&detail=" + encodeURIComponent(String(err?.message || err)), req.url));
     }
 }
