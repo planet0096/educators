@@ -18,7 +18,7 @@ export async function GET(req: Request) {
         const url = new URL(req.url);
         const redirectUri = `${url.protocol}//${url.host}/api/calcom/callback`;
 
-        const calAuthUrl = new URL("https://app.cal.com/oauth/authorize");
+        const calAuthUrl = new URL("https://app.cal.com/auth/oauth2/authorize");
         calAuthUrl.searchParams.append("client_id", clientId);
         calAuthUrl.searchParams.append("redirect_uri", redirectUri);
         calAuthUrl.searchParams.append("response_type", "code");

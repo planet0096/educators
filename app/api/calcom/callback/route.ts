@@ -34,9 +34,8 @@ export async function GET(req: Request) {
         const url = new URL(req.url);
         const redirectUri = `${url.protocol}//${url.host}/api/calcom/callback`;
 
-        // 1. Exchange code for token
-        // Using the typical /exchange or /token endpoint for Cal.com OAuth
-        const tokenResponse = await fetch("https://api.cal.com/v1/oauth/exchange", {
+        // 1. Exchange code for token using the correct Cal.com v2 endpoint
+        const tokenResponse = await fetch("https://api.cal.com/v2/auth/oauth2/token", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -54,21 +53,22 @@ export async function GET(req: Request) {
 
         if (!tokenResponse.ok) {
             console.error("Cal.com token error payload:", tokenData);
-            return NextResponse.redirect(new URL("/settings/integrations?error=calcom_auth_failed", req.url));
+            return NextResponse.redirect(new URL("/dashboard/integrations?error=calcom_auth_failed", req.url));
         }
 
         const { access_token, refresh_token, expires_in } = tokenData;
 
-        // 2. Fetch the connected user's profile from Cal.com
-        const meResponse = await fetch("https://api.cal.com/v1/users/me", {
+        // 2. Fetch the connected user's profile from Cal.com v2 API
+        const meResponse = await fetch("https://api.cal.com/v2/me", {
             headers: {
                 Authorization: `Bearer ${access_token}`,
+                "cal-api-version": "2024-08-13",
             },
         });
 
         const meData = await meResponse.json();
-        const calComUserId = meData?.user?.id;
-        const calComUsername = meData?.user?.username || meData?.user?.email || "Unknown";
+        const calComUserId = meData?.data?.id || meData?.id;
+        const calComUsername = meData?.data?.username || meData?.data?.email || meData?.username || "Unknown";
 
         if (!calComUserId) {
             throw new Error("Could not fetch user profile from Cal.com");
