@@ -13,7 +13,7 @@ export async function GET() {
         await dbConnect();
         const integration = await CalComIntegration.findOne({ user: session.user.id });
 
-        if (integration) {
+        if (integration && integration.apiKey) {
             return NextResponse.json({
                 connected: true,
                 username: integration.calComUsername
