@@ -5,9 +5,11 @@ export interface IAutomationFlow extends Document {
     name: string;
     description?: string;
     isActive: boolean;
-    triggerType: "keyword" | "first_contact" | "catch_all";
-    keywords?: string[]; // Arrays of keywords to match, empty if triggerType is not 'keyword'
-    flowData: any; // Saves the nodes and edges from React Flow
+    source: "chatbot" | "calcom";
+    triggerType: "keyword" | "first_contact" | "catch_all" | "calcom_booking_created" | "calcom_booking_cancelled" | "calcom_booking_rescheduled" | "calcom_reminder";
+    keywords?: string[];
+    calcomEventTypeId?: string;
+    flowData: any;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -18,12 +20,14 @@ const AutomationFlowSchema: Schema = new Schema(
         name: { type: String, required: true },
         description: { type: String, default: "" },
         isActive: { type: Boolean, default: false },
+        source: { type: String, enum: ["chatbot", "calcom"], default: "chatbot" },
         triggerType: {
             type: String,
-            enum: ["keyword", "first_contact", "catch_all"],
+            enum: ["keyword", "first_contact", "catch_all", "calcom_booking_created", "calcom_booking_cancelled", "calcom_booking_rescheduled", "calcom_reminder"],
             default: "keyword"
         },
         keywords: [{ type: String }],
+        calcomEventTypeId: { type: String, default: "" },
         flowData: { type: Schema.Types.Mixed, default: { nodes: [], edges: [] } },
     },
     { timestamps: true }

@@ -39,7 +39,9 @@ export default function SidebarLayout({ children, userRole, walletBalance, userE
         { name: "Find Students", href: "/dashboard/students", icon: Search },
         { name: "Leads CRM", href: "/dashboard/leads", icon: Users },
         { name: "WhatsApp CRM", href: "/dashboard/whatsapp", icon: MessageCircle },
+        { name: "Chatbot Flows", href: "/dashboard/automation", icon: Zap },
         { name: "Integrations", href: "/dashboard/integrations", icon: Zap },
+        { name: "Cal.com Workflows", href: "/dashboard/calcom-automations", icon: Calendar },
         { name: "Resources", href: "#", icon: BookOpen },
     ];
 

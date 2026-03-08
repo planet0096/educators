@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import dbConnect from "@/lib/db";
-import User from "@/models/User";
 import AutomationFlow from "@/models/AutomationFlow";
 
 export async function GET(req: NextRequest) {
@@ -13,8 +12,12 @@ export async function GET(req: NextRequest) {
 
         await dbConnect();
 
-        const flows = await AutomationFlow.find({ educatorId: session.user.id })
-            .sort({ createdAt: -1 });
+        // Filter by source if provided (?source=calcom or ?source=chatbot)
+        const source = req.nextUrl.searchParams.get("source");
+        const query: any = { educatorId: session.user.id };
+        if (source) query.source = source;
+
+        const flows = await AutomationFlow.find(query).sort({ createdAt: -1 });
 
         return NextResponse.json({ success: true, flows }, { status: 200 });
 
@@ -32,7 +35,7 @@ export async function POST(req: NextRequest) {
         }
 
         const body = await req.json();
-        const { name, description, triggerType, keywords } = body;
+        const { name, description, triggerType, keywords, source } = body;
 
         if (!name) {
             return new NextResponse("Name is required", { status: 400 });
@@ -44,6 +47,7 @@ export async function POST(req: NextRequest) {
             educatorId: session.user.id,
             name,
             description,
+            source: source || "chatbot",
             triggerType: triggerType || "keyword",
             keywords: keywords || [],
             isActive: false,
