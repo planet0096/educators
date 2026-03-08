@@ -84,24 +84,31 @@ export default function SidebarLayout({ children, userRole, walletBalance, userE
                     {/* WhatsApp CRM group — only for educators */}
                     {userRole === "educator" && (
                         <div>
-                            {/* Group header — toggles the submenu */}
-                            <button
-                                onClick={() => expanded && setWaGroupOpen(o => !o)}
-                                title={!expanded ? "WhatsApp CRM" : undefined}
-                                className={`
-                                    w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
-                                    ${expanded ? 'px-3' : 'justify-center w-10 mx-auto'}
-                                    ${isOnWaSubpage ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'}
-                                `}
-                            >
-                                <MessageCircle className={`w-5 h-5 shrink-0 ${isOnWaSubpage ? 'text-zinc-700' : 'text-zinc-400'}`} />
+                            {/* Group header: Link navigates, chevron toggles submenu */}
+                            <div className={`flex items-center rounded-xl transition-all duration-200 ${isOnWaSubpage ? 'bg-zinc-100' : 'hover:bg-zinc-100'} ${expanded ? '' : 'justify-center'}`}>
+                                <Link
+                                    href="/dashboard/whatsapp"
+                                    title={!expanded ? "WhatsApp CRM" : undefined}
+                                    onClick={() => setWaGroupOpen(true)}
+                                    className={`
+                                        flex items-center gap-3 py-2.5 text-sm font-medium flex-1
+                                        ${expanded ? 'px-3' : 'justify-center w-10 mx-auto'}
+                                        ${isOnWaSubpage ? 'text-zinc-900' : 'text-zinc-600'}
+                                    `}
+                                >
+                                    <MessageCircle className={`w-5 h-5 shrink-0 ${isOnWaSubpage ? 'text-zinc-700' : 'text-zinc-400'}`} />
+                                    {expanded && <span className="whitespace-nowrap flex-1 text-left">WhatsApp CRM</span>}
+                                </Link>
                                 {expanded && (
-                                    <>
-                                        <span className="whitespace-nowrap flex-1 text-left">WhatsApp CRM</span>
-                                        <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${waGroupOpen ? 'rotate-180' : ''}`} />
-                                    </>
+                                    <button
+                                        onClick={() => setWaGroupOpen(o => !o)}
+                                        className="p-2 mr-1 text-zinc-400 hover:text-zinc-700 transition-colors"
+                                        title={waGroupOpen ? "Collapse" : "Expand"}
+                                    >
+                                        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${waGroupOpen ? 'rotate-180' : ''}`} />
+                                    </button>
                                 )}
-                            </button>
+                            </div>
 
                             {/* Submenus */}
                             <AnimatePresence initial={false}>
