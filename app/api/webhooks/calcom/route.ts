@@ -55,7 +55,8 @@ export async function POST(req: Request) {
             : "See booking details";
         const meetingLink = payload.videoCallData?.url || payload.location || "";
         const organizerName = payload.organizer?.name || "Your Educator";
-        const eventTypeName = payload.eventType?.title || payload.title || "Meeting";
+        const cleanEventName = payload.eventTitle || payload.eventType?.title || payload.title || "Meeting";
+        const eventTypeName = cleanEventName.length > 30 ? cleanEventName.substring(0, 27) + "..." : cleanEventName;
         const eventTypeId = payload.eventType?.id ? String(payload.eventType.id) : "";
         const bookingUid = payload.uid || "";
 
