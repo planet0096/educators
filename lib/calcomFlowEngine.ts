@@ -9,6 +9,13 @@ import { Client } from "@upstash/qstash";
 
 const qstash = new Client({ token: process.env.QSTASH_TOKEN || "" });
 
+// Helper: resolve the correct absolute URL for this deployment
+function getAppUrl(): string {
+    if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+    if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+    return "http://localhost:3000";
+}
+
 export interface CalComBookingPayload {
     triggerEvent: string;
     inviteeName: string;
@@ -187,9 +194,10 @@ export async function executeFlow(
                 stoppedAtNodeId = nextNodes[0];
 
                 if (process.env.QSTASH_TOKEN) {
-                    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+                    const callbackUrl = `${getAppUrl()}/api/calcom/queue`;
+                    console.log(`[CalComEngine] Delay node: scheduling continuation → ${callbackUrl}, fires at ${resumeTime.toISOString()}`);
                     const published = await qstash.publishJSON({
-                        url: `${baseUrl}/api/calcom/queue`,
+                        url: callbackUrl,
                         body: {
                             flowId: flow._id,
                             educatorId: flow.educatorId,
@@ -393,10 +401,12 @@ export async function runCalComFlows(
                 continue;
             }
 
-            // Determine the correct app URL for QStash to call back
-            const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || process.env.VERCEL_URL
-                ? `https://${process.env.VERCEL_URL}`
-                : "http://localhost:3000";
+            // ✅ Derive the correct absolute URL for QStash to call back to
+            // NEXT_PUBLIC_APP_URL takes priority (set this in Vercel env vars)
+            // VERCEL_URL is auto-set by Vercel but has no https:// prefix
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL
+                || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null)
+                || "http://localhost:3000";
 
             const resumeNodeId = flow.flowData?.edges?.find((e: any) => e.source === triggerNode.id)?.target;
             if (!resumeNodeId) {
@@ -404,9 +414,12 @@ export async function runCalComFlows(
                 continue;
             }
 
+            const callbackUrl = `${getAppUrl()}/api/calcom/queue`;
+            console.log(`[CalComEngine] Publishing QStash job → ${callbackUrl}, fires at ${executeAtDate.toISOString()}`);
+
             try {
                 const published = await qstash.publishJSON({
-                    url: `${process.env.NEXT_PUBLIC_APP_URL || appUrl}/api/calcom/queue`,
+                    url: callbackUrl,
                     body: {
                         flowId: flow._id,
                         educatorId: flow.educatorId,
