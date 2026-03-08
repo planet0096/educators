@@ -339,9 +339,10 @@ export async function runCalComFlows(
             const reminderUnit = (triggerNode.data.reminderUnit as string) || "hours";
             const reminderDirection = (triggerNode.data.reminderDirection as string) || "before";
 
-            let offsetMs = reminderAmount * 60 * 1000; // start with minutes
-            if (reminderUnit === "hours") offsetMs *= 60;
-            if (reminderUnit === "days") offsetMs *= 24 * 60;
+            // Correct offset calculation always in milliseconds
+            let offsetMs = reminderAmount * 60 * 1000; // minutes → ms
+            if (reminderUnit === "hours") offsetMs = reminderAmount * 60 * 60 * 1000;
+            if (reminderUnit === "days") offsetMs = reminderAmount * 24 * 60 * 60 * 1000;
 
             const meetingTime = new Date(bookingPayload.meetingDateRaw).getTime();
             const executeAtTime = reminderDirection === "before"
@@ -350,50 +351,87 @@ export async function runCalComFlows(
 
             const executeAtDate = new Date(executeAtTime);
 
+            console.log(`[CalComEngine] Reminder: meeting at ${new Date(meetingTime).toISOString()}, will fire at ${executeAtDate.toISOString()}`);
+
+            // Always write a log entry -- even before QStash, so the execution history is not blank
+            let scheduledLog: any = null;
+            try {
+                scheduledLog = await CalComLog.create({
+                    educatorId: flow.educatorId,
+                    ruleId: flow._id,
+                    ruleName: flow.name,
+                    triggerEvent: "booking.reminder.scheduled",
+                    bookingUid: bookingPayload.bookingUid,
+                    inviteeName: bookingPayload.inviteeName,
+                    inviteePhone: bookingPayload.inviteePhone,
+                    inviteeTimeZone: bookingPayload.inviteeTimeZone,
+                    templateName: "Scheduled Reminder",
+                    status: executeAtDate.getTime() < Date.now() ? "failed" : "scheduled",
+                    errorMessage: executeAtDate.getTime() < Date.now() ? `Reminder time (${executeAtDate.toISOString()}) is in the past — skipped` : undefined,
+                    scheduledFor: executeAtDate,
+                    flowState: { isReminder: true }
+                });
+            } catch (logErr) {
+                console.error("[CalComEngine] Failed to save reminder log:", logErr);
+            }
+
             // Do not schedule if it's already in the past
             if (executeAtDate.getTime() < Date.now()) {
-                console.log(`[CalComEngine] Skipping reminder, requested time was in the past.`);
+                console.log(`[CalComEngine] ⚠️ Skipping reminder for flow "${flow.name}", requested time was in the past.`);
                 continue;
             }
 
-            if (process.env.QSTASH_TOKEN) {
-                const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-                try {
-                    const published = await qstash.publishJSON({
-                        url: `${baseUrl}/api/calcom/queue`,
-                        body: {
-                            flowId: flow._id,
-                            educatorId: flow.educatorId,
-                            bookingVars,
-                            bookingPayload,
-                            // Start at the trigger node's immediate children when we resume
-                            resumeNodeId: flow.flowData?.edges?.find((e: any) => e.source === triggerNode.id)?.target
-                        },
-                        notBefore: Math.floor(executeAtDate.getTime() / 1000)
+            const qstashToken = process.env.QSTASH_TOKEN;
+            if (!qstashToken) {
+                console.warn(`[CalComEngine] ⚠️ QSTASH_TOKEN not set. Cannot schedule Cal.com reminders. Please add it to your Vercel environment variables.`);
+                if (scheduledLog) {
+                    await CalComLog.findByIdAndUpdate(scheduledLog._id, {
+                        status: "failed",
+                        errorMessage: "QSTASH_TOKEN environment variable is not configured on this server."
                     });
-
-                    // Log the reminder schedule
-                    await CalComLog.create({
-                        educatorId: flow.educatorId,
-                        ruleId: flow._id,
-                        ruleName: flow.name,
-                        triggerEvent: "booking.reminder.scheduled",
-                        bookingUid: bookingPayload.bookingUid,
-                        inviteeName: bookingPayload.inviteeName,
-                        inviteePhone: bookingPayload.inviteePhone,
-                        inviteeTimeZone: bookingPayload.inviteeTimeZone,
-                        templateName: "Scheduled Reminder",
-                        status: "scheduled",
-                        scheduledFor: executeAtDate,
-                        qstashMessageId: published.messageId,
-                        flowState: { isReminder: true }
-                    });
-                    console.log(`[CalComEngine] ✅ Scheduled Reminder "${flow.name}" via QStash for ${executeAtDate.toISOString()}`);
-                } catch (e) {
-                    console.error(`[CalComEngine] QStash Delivery Error`, e);
                 }
-            } else {
-                console.warn(`[CalComEngine] QSTASH_TOKEN missing, cannot schedule Cal.com reminders.`);
+                continue;
+            }
+
+            // Determine the correct app URL for QStash to call back
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || process.env.VERCEL_URL
+                ? `https://${process.env.VERCEL_URL}`
+                : "http://localhost:3000";
+
+            const resumeNodeId = flow.flowData?.edges?.find((e: any) => e.source === triggerNode.id)?.target;
+            if (!resumeNodeId) {
+                console.warn(`[CalComEngine] Reminder flow "${flow.name}" has no nodes connected to trigger. Nothing to schedule.`);
+                continue;
+            }
+
+            try {
+                const published = await qstash.publishJSON({
+                    url: `${process.env.NEXT_PUBLIC_APP_URL || appUrl}/api/calcom/queue`,
+                    body: {
+                        flowId: flow._id,
+                        educatorId: flow.educatorId,
+                        bookingVars,
+                        bookingPayload,
+                        resumeNodeId
+                    },
+                    notBefore: Math.floor(executeAtDate.getTime() / 1000)
+                });
+
+                // Update the log with the real QStash message ID
+                if (scheduledLog) {
+                    await CalComLog.findByIdAndUpdate(scheduledLog._id, {
+                        qstashMessageId: published.messageId
+                    });
+                }
+                console.log(`[CalComEngine] ✅ Scheduled Reminder "${flow.name}" via QStash for ${executeAtDate.toISOString()} (msgId: ${published.messageId})`);
+            } catch (e: any) {
+                console.error(`[CalComEngine] QStash publish error:`, e?.message || e);
+                if (scheduledLog) {
+                    await CalComLog.findByIdAndUpdate(scheduledLog._id, {
+                        status: "failed",
+                        errorMessage: `QStash error: ${e?.message || "Unknown"}`
+                    });
+                }
             }
             continue; // Skip immediate execution
         }
