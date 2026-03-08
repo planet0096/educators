@@ -296,9 +296,14 @@ export default function CalcomAutomationsPage() {
                                             <tr key={log._id} className="hover:bg-zinc-50 transition-colors">
                                                 <td className="px-4 py-3">
                                                     {log.status === "success" && <span className="flex items-center gap-1.5 text-emerald-600 font-semibold text-xs"><CheckCircle2 className="w-4 h-4" /> Success</span>}
-                                                    {log.status === "failed" && <span className="flex items-center gap-1.5 text-red-500 font-semibold text-xs" title={log.errorMessage}><XCircle className="w-4 h-4" /> Failed</span>}
                                                     {log.status === "scheduled" && <span className="flex items-center gap-1.5 text-orange-600 font-semibold text-xs"><Clock className="w-4 h-4" /> Upcoming</span>}
-                                                    {log.status === "cancelled" && <span className="flex items-center gap-1.5 text-zinc-500 font-semibold text-xs" title={log.errorMessage}><Trash2 className="w-4 h-4" /> Cancelled</span>}
+                                                    {log.status === "cancelled" && <span className="flex items-center gap-1.5 text-zinc-500 font-semibold text-xs"><Trash2 className="w-4 h-4" /> Cancelled</span>}
+                                                    {log.status === "failed" && (
+                                                        <div>
+                                                            <span className="flex items-center gap-1.5 text-red-500 font-semibold text-xs"><XCircle className="w-4 h-4" /> Failed</span>
+                                                            {log.errorMessage && <p className="text-[10px] text-red-400 mt-0.5 max-w-[180px] leading-tight">{log.errorMessage}</p>}
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 font-medium text-zinc-800 max-w-[140px] truncate">{log.ruleName || "—"}</td>
                                                 <td className="px-4 py-3 text-zinc-600">
@@ -319,7 +324,7 @@ export default function CalcomAutomationsPage() {
                             </div>
                             {logs.some(l => l.status === "failed") && (
                                 <div className="px-4 py-3 bg-rose-50 border-t border-rose-100 text-xs text-rose-600">
-                                    <strong>Failed rows:</strong> Hover over the ❌ icon to see the actual error message mapping variables or formatting phones.
+                                    <strong>Failed rows:</strong> The error reason is shown directly below the ❌ badge above.
                                 </div>
                             )}
                         </div>

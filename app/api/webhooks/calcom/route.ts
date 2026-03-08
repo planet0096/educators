@@ -25,11 +25,16 @@ export async function POST(req: Request) {
             console.error("[CalCom Webhook] Failed to save raw log", e);
         }
 
-        // Normalize trigger event (Cal.com sends BOOKING_CREATED, old ver sends booking.created)
-        const normalizedEvent = (triggerEvent || "").toLowerCase().replace("_", ".");
+        // Normalize trigger event (Cal.com sends BOOKING_CREATED, some versions send booking.created)
+        // Use regex /g flag to replace ALL underscores, not just the first one
+        const rawTrigger = (triggerEvent || "").toLowerCase();
+        const normalizedEvent = rawTrigger.replace(/_/g, "."); // BOOKING_CREATED → booking.created
+
+        console.log(`[CalCom Webhook] Raw trigger: "${triggerEvent}" → Normalized: "${normalizedEvent}"`);
 
         if (!["booking.created", "booking.cancelled", "booking.rescheduled"].includes(normalizedEvent)) {
-            if (rawLogId) await CalComWebhookLog.findByIdAndUpdate(rawLogId, { errorReason: `Ignored event type: ${triggerEvent}` });
+            console.log(`[CalCom Webhook] Ignoring unrecognized event: ${normalizedEvent}`);
+            if (rawLogId) await CalComWebhookLog.findByIdAndUpdate(rawLogId, { errorReason: `Ignored event type: ${triggerEvent} (normalized: ${normalizedEvent})` });
             return NextResponse.json({ message: "Event type ignored" }, { status: 200 });
         }
 
