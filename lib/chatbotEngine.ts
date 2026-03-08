@@ -375,6 +375,11 @@ async function executeFlowSession(
                             updatePayload[fieldMapping] = rawValue;
                         }
 
+                        let setOnInsertPayload: any = {};
+                        if (!updatePayload.name) {
+                            setOnInsertPayload.name = "Unknown Contact";
+                        }
+
                         console.log(`[ChatbotEngine] Upserting Contact ${session.contactPhone} -> ${fieldMapping}: ${rawValue}`);
 
                         await Contact.findOneAndUpdate(
@@ -382,9 +387,7 @@ async function executeFlowSession(
                             {
                                 $set: updatePayload,
                                 // If contact didn't exist, these are set on insert
-                                $setOnInsert: {
-                                    name: "Unknown Contact", // fallback if name isn't the mapped field
-                                }
+                                $setOnInsert: setOnInsertPayload
                             },
                             { upsert: true, new: true, runValidators: true }
                         );

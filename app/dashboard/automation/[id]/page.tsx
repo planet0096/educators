@@ -120,8 +120,8 @@ function FlowBuilderCanvas() {
             const data = await flowRes.json();
             const cfData = await cfRes.json();
 
-            if (cfData.success && cfData.customFields) {
-                setCustomFields(cfData.customFields);
+            if (cfData.success && cfData.fields) {
+                setCustomFields(cfData.fields);
             }
 
             if (data.success && data.flow) {
