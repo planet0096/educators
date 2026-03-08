@@ -19,6 +19,7 @@ interface SidebarLayoutProps {
 }
 
 const waSubLinks = [
+    { name: "Contacts", href: "/dashboard/whatsapp/contacts", icon: Users },
     { name: "Chatbot Flows", href: "/dashboard/automation", icon: Zap },
     { name: "Cal Flows", href: "/dashboard/calcom-automations", icon: Calendar },
     { name: "Inbox", href: "/dashboard/inbox", icon: Inbox },

@@ -18,7 +18,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
         }
 
         const body = await req.json();
-        const { name, email, phone, lists, tags } = body;
+        const { name, email, phone, city, company, website, notes, source, dateOfBirth, lists, tags, customFieldValues } = body;
 
         await dbConnect();
 
@@ -34,17 +34,30 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
             }
         }
 
+        // Build $set object, being explicit about each field
+        const setObj: Record<string, any> = {};
+        if (name !== undefined) setObj.name = name;
+        if (email !== undefined) setObj.email = email;
+        if (phone !== undefined) setObj.phone = phone;
+        if (city !== undefined) setObj.city = city;
+        if (company !== undefined) setObj.company = company;
+        if (website !== undefined) setObj.website = website;
+        if (notes !== undefined) setObj.notes = notes;
+        if (source !== undefined) setObj.source = source;
+        if (dateOfBirth !== undefined) setObj.dateOfBirth = dateOfBirth;
+        if (lists !== undefined) setObj.lists = lists;
+        if (tags !== undefined) setObj.tags = tags;
+
+        // Merge custom field values (patch individual keys)
+        if (customFieldValues && typeof customFieldValues === "object") {
+            for (const [key, value] of Object.entries(customFieldValues)) {
+                setObj[`customFieldValues.${key}`] = value;
+            }
+        }
+
         const updatedContact = await Contact.findOneAndUpdate(
             { _id: id, educatorId: session.user.id },
-            {
-                $set: {
-                    ...(name && { name }),
-                    ...(email !== undefined && { email }),
-                    ...(phone && { phone }),
-                    ...(lists && { lists }),
-                    ...(tags && { tags })
-                }
-            },
+            { $set: setObj },
             { new: true }
         )
             .populate("lists", "name")

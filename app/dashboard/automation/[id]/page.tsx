@@ -17,7 +17,7 @@ import {
     Panel
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload, Wand2 } from "lucide-react";
+import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload, Wand2, Database } from "lucide-react";
 import toast from "react-hot-toast";
 import dagre from "dagre";
 
@@ -82,6 +82,9 @@ function FlowBuilderCanvas() {
     const [showJsonModal, setShowJsonModal] = useState(false);
     const [jsonInput, setJsonInput] = useState("");
 
+    // Custom Fields for mapping in Update Contact nodes
+    const [customFields, setCustomFields] = useState<any[]>([]);
+
     // Note: We need a ref to access the latest state inside the callback if needed
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
 
@@ -108,8 +111,18 @@ function FlowBuilderCanvas() {
         ];
 
         try {
-            const res = await fetch(`/api/automation/flows/${flowId}`);
-            const data = await res.json();
+            // Fetch flow and custom fields in parallel
+            const [flowRes, cfRes] = await Promise.all([
+                fetch(`/api/automation/flows/${flowId}`),
+                fetch(`/api/whatsapp/custom-fields`)
+            ]);
+
+            const data = await flowRes.json();
+            const cfData = await cfRes.json();
+
+            if (cfData.success && cfData.customFields) {
+                setCustomFields(cfData.customFields);
+            }
 
             if (data.success && data.flow) {
                 setFlowName(data.flow.name);
@@ -268,7 +281,7 @@ function FlowBuilderCanvas() {
                 id: `${type}-${generateId()}`,
                 type,
                 position,
-                data: {},
+                data: type === 'updateContactNode' ? { customFields } : {},
             };
 
             setNodes((nds) => nds.concat(newNode));
@@ -397,6 +410,23 @@ function FlowBuilderCanvas() {
                         <div>
                             <div className="text-sm font-bold text-zinc-900">Condition</div>
                             <div className="text-[10px] text-zinc-500">Branch True/False</div>
+                        </div>
+                    </div>
+
+                    <div
+                        className="bg-white border border-purple-200 shadow-sm rounded-xl p-3 flex items-center gap-3 cursor-grab hover:ring-2 hover:ring-purple-500/20 transition-all hover:border-purple-500 mt-4"
+                        onDragStart={(event) => {
+                            event.dataTransfer.setData('application/reactflow', 'updateContactNode');
+                            event.dataTransfer.effectAllowed = 'move';
+                        }}
+                        draggable
+                    >
+                        <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center shrink-0">
+                            <Database className="w-4 h-4 text-purple-600" />
+                        </div>
+                        <div>
+                            <div className="text-sm font-bold text-zinc-900">Update Contact</div>
+                            <div className="text-[10px] text-zinc-500">Save replies to CRM</div>
                         </div>
                     </div>
 

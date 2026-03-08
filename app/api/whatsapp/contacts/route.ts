@@ -3,6 +3,15 @@ import { auth } from "@/auth";
 import dbConnect from "@/lib/db";
 import Contact from "@/models/Contact";
 
+const ALLOWED_SORT_FIELDS: Record<string, string> = {
+    name: "name",
+    phone: "phone",
+    email: "email",
+    city: "city",
+    company: "company",
+    createdAt: "createdAt",
+};
+
 export async function GET(req: Request) {
     try {
         const session = await auth();
@@ -19,6 +28,9 @@ export async function GET(req: Request) {
         const search = url.searchParams.get("search") || "";
         const listId = url.searchParams.get("listId");
         const tagId = url.searchParams.get("tagId");
+        const sortByParam = url.searchParams.get("sortBy") || "createdAt";
+        const sortOrder = url.searchParams.get("sortOrder") === "asc" ? 1 : -1;
+        const sortBy = ALLOWED_SORT_FIELDS[sortByParam] || "createdAt";
 
         const query: any = { educatorId: session.user.id };
 
@@ -26,7 +38,9 @@ export async function GET(req: Request) {
             query.$or = [
                 { name: { $regex: search, $options: "i" } },
                 { email: { $regex: search, $options: "i" } },
-                { phone: { $regex: search, $options: "i" } }
+                { phone: { $regex: search, $options: "i" } },
+                { city: { $regex: search, $options: "i" } },
+                { company: { $regex: search, $options: "i" } },
             ];
         }
 
@@ -44,7 +58,7 @@ export async function GET(req: Request) {
             Contact.find(query)
                 .populate("lists", "name")
                 .populate("tags", "name color")
-                .sort({ createdAt: -1 })
+                .sort({ [sortBy]: sortOrder })
                 .skip(skip)
                 .limit(limit)
                 .lean(),
@@ -76,7 +90,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { name, email, phone, lists, tags } = body;
+        const { name, email, phone, city, company, website, notes, source, dateOfBirth, lists, tags, customFieldValues } = body;
 
         if (!name || !phone) {
             return NextResponse.json({ error: "Name and phone are required" }, { status: 400 });
@@ -95,8 +109,15 @@ export async function POST(req: Request) {
             name,
             email,
             phone,
+            city,
+            company,
+            website,
+            notes,
+            source: source || "Manual",
+            dateOfBirth,
             lists: lists || [],
-            tags: tags || []
+            tags: tags || [],
+            customFieldValues: customFieldValues || {},
         });
 
         const populatedContact = await Contact.findById(newContact._id)

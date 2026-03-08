@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, NodeProps, useReactFlow } from "@xyflow/react";
-import { MessageSquare, Zap, Clock, Type, Settings2, Trash2, Plus, X, List, Image as ImageIcon, Video, FileText, Link } from "lucide-react";
+import { MessageSquare, Zap, Clock, Type, Settings2, Trash2, Plus, X, List, Image as ImageIcon, Video, FileText, Link, Database } from "lucide-react";
 
 // --- Trigger Node ---
 export const TriggerNode = memo(({ data, isConnectable, id }: NodeProps) => {
@@ -385,10 +385,92 @@ export const ConditionNode = memo(({ data, isConnectable, id }: NodeProps) => {
     );
 });
 ConditionNode.displayName = "ConditionNode";
+// --- Update Contact Node ---
+export const UpdateContactNode = memo(({ data, isConnectable, id }: NodeProps) => {
+    const { updateNodeData, deleteElements } = useReactFlow();
+
+    // Data can optionally receive customFields from the parent FlowBuilderCanvas via contextual injection if we want to get fancy,
+    // but for simplicity we'll assume it's passed in from node.data.customFields when the node is initialized or updated
+    // or we just render the standard ones and a text input for the field key if all else fails.
+    // For best UX, data.customFields should contain the array of fields: { key: string, label: string }
+    const customFields = (data?.customFields as any[]) || [];
+
+    return (
+        <div className="bg-white border-2 border-purple-500 rounded-xl shadow-lg w-72 overflow-hidden group">
+            <Handle
+                type="target"
+                position={Position.Top}
+                isConnectable={isConnectable}
+                className="w-3 h-3 bg-purple-500"
+            />
+            <div className="bg-purple-500 text-white p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Database className="w-5 h-5" />
+                    <div className="font-bold text-sm">Update Contact</div>
+                </div>
+                <button onClick={() => deleteElements({ nodes: [{ id }] })} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-purple-600 rounded">
+                    <Trash2 className="w-4 h-4" />
+                </button>
+            </div>
+            <div className="p-4 space-y-4">
+                <div className="space-y-1">
+                    <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Field to Update</div>
+                    <select
+                        value={(data?.field as string) || ''}
+                        onChange={(e) => updateNodeData(id, { field: e.target.value })}
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 nodrag"
+                    >
+                        <option value="" disabled>Select a field...</option>
+                        <optgroup label="Standard Fields">
+                            <option value="name">Name</option>
+                            <option value="email">Email</option>
+                            <option value="city">City</option>
+                            <option value="company">Company</option>
+                            <option value="website">Website</option>
+                            <option value="notes">Notes</option>
+                        </optgroup>
+                        {customFields.length > 0 && (
+                            <optgroup label="Custom Fields">
+                                {customFields.map((cf: any) => (
+                                    <option key={cf.key} value={`custom_${cf.key}`}>{cf.label}</option>
+                                ))}
+                            </optgroup>
+                        )}
+                    </select>
+                </div>
+
+                <div className="space-y-1">
+                    <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider flex justify-between">
+                        <span>Value</span>
+                    </div>
+                    <input
+                        type="text"
+                        value={(data?.value as string) || ''}
+                        onChange={(e) => updateNodeData(id, { value: e.target.value })}
+                        placeholder="e.g. {{user_name}}"
+                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 nodrag font-mono"
+                    />
+                    <p className="text-[10px] text-zinc-400 mt-1 leading-relaxed">
+                        Use <span className="text-purple-600 font-semibold bg-purple-50 px-1 rounded">{"{{var}}"}</span> to inject replies saved from "Wait for Reply" nodes.
+                    </p>
+                </div>
+            </div>
+            <Handle
+                type="source"
+                position={Position.Bottom}
+                id="a"
+                isConnectable={isConnectable}
+                className="w-3 h-3 bg-purple-500"
+            />
+        </div>
+    );
+});
+UpdateContactNode.displayName = "UpdateContactNode";
 
 export const nodeTypes = {
     triggerNode: TriggerNode,
     sendMessageNode: SendMessageNode,
     waitReplyNode: WaitReplyNode,
     conditionNode: ConditionNode,
+    updateContactNode: UpdateContactNode,
 };

@@ -1,19 +1,16 @@
 "use client";
-"use client";
 
 import { useState, useEffect, FormEvent, ChangeEvent } from "react";
-import { MessageCircle, Settings, Send, CheckCircle2, AlertCircle, Loader2, Image as ImageIcon, Video, FileText, MapPin, ExternalLink, Phone, Copy, ListX, ArrowRight, Users, Tags, Megaphone, Store, MessageSquare } from "lucide-react";
+import { MessageCircle, Settings, Send, CheckCircle2, AlertCircle, Loader2, Image as ImageIcon, Video, FileText, MapPin, ExternalLink, Phone, Copy, ListX, ArrowRight, Users, Megaphone, Store, MessageSquare } from "lucide-react";
 import { WhatsAppTemplate, WhatsAppTemplateComponent } from "@/models/WhatsAppTemplateTypes";
 
 import ContactsTab from "./components/ContactsTab";
-import ListsTab from "./components/ListsTab";
-import TagsTab from "./components/TagsTab";
 import CampaignsTab from "./components/CampaignsTab";
 import IntegrationsTab from "./components/IntegrationsTab";
 import ChatTab from "./components/ChatTab";
 
 export default function WhatsAppPage() {
-    const [activeTab, setActiveTab] = useState<"settings" | "test" | "contacts" | "lists" | "tags" | "campaigns" | "integrations" | "chat">("chat");
+    const [activeTab, setActiveTab] = useState<"settings" | "test" | "contacts" | "campaigns" | "integrations" | "chat">("chat");
 
     // Config state
     const [appId, setAppId] = useState("");
@@ -486,26 +483,7 @@ export default function WhatsAppPage() {
                     <Users className="w-4 h-4" />
                     Contacts
                 </button>
-                <button
-                    onClick={() => setActiveTab("lists")}
-                    className={`flex items-center gap-2 px-6 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === "lists"
-                        ? "border-emerald-600 text-emerald-700"
-                        : "border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300"
-                        } `}
-                >
-                    <ListX className="w-4 h-4" />
-                    Lists
-                </button>
-                <button
-                    onClick={() => setActiveTab("tags")}
-                    className={`flex items-center gap-2 px-6 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === "tags"
-                        ? "border-emerald-600 text-emerald-700"
-                        : "border-transparent text-zinc-500 hover:text-zinc-700 hover:border-zinc-300"
-                        } `}
-                >
-                    <Tags className="w-4 h-4" />
-                    Tags
-                </button>
+
                 <div className="w-px h-6 bg-zinc-200 self-center mx-2 hidden md:block"></div>
                 <button
                     onClick={() => setActiveTab("integrations")}
@@ -824,8 +802,6 @@ export default function WhatsAppPage() {
 
                 {activeTab === "campaigns" && <CampaignsTab />}
                 {activeTab === "contacts" && <ContactsTab />}
-                {activeTab === "lists" && <ListsTab />}
-                {activeTab === "tags" && <TagsTab />}
                 {activeTab === "integrations" && <IntegrationsTab />}
                 {activeTab === "chat" && <ChatTab />}
             </div>

@@ -1,5 +1,6 @@
 import AutomationFlow from "@/models/AutomationFlow";
 import AutomationSession from "@/models/AutomationSession";
+import Contact from "@/models/Contact";
 import { IWhatsAppConfig } from "@/models/WhatsAppConfig";
 import mongoose from "mongoose";
 
@@ -345,6 +346,54 @@ async function executeFlowSession(
 
             } else if (currentNode.type === "triggerNode") {
                 // Just move to the next node
+                const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
+                if (!nextNode) {
+                    currentNode = null;
+                    session.status = "completed";
+                } else {
+                    currentNode = nextNode;
+                }
+            } else if (currentNode.type === "updateContactNode") {
+                const fieldMapping = currentNode.data?.field as string;
+                let rawValue = (currentNode.data?.value as string) || "";
+
+                // Evaluate variables: replace {{varName}} with actual state
+                for (const [key, val] of Object.entries(session.state)) {
+                    rawValue = rawValue.replace(new RegExp(`{{${key}}}`, 'g'), String(val));
+                }
+
+                if (fieldMapping && rawValue) {
+                    try {
+                        let updatePayload: any = { source: "Chatbot" }; // By default, tag as Chatbot source
+
+                        if (fieldMapping.startsWith("custom_")) {
+                            const customKey = fieldMapping.replace("custom_", "");
+                            // Use dot notation target map element directly
+                            updatePayload[`customFieldValues.${customKey}`] = rawValue;
+                        } else {
+                            // Standard field
+                            updatePayload[fieldMapping] = rawValue;
+                        }
+
+                        console.log(`[ChatbotEngine] Upserting Contact ${session.contactPhone} -> ${fieldMapping}: ${rawValue}`);
+
+                        await Contact.findOneAndUpdate(
+                            { educatorId: session.educatorId, phone: session.contactPhone },
+                            {
+                                $set: updatePayload,
+                                // If contact didn't exist, these are set on insert
+                                $setOnInsert: {
+                                    name: "Unknown Contact", // fallback if name isn't the mapped field
+                                }
+                            },
+                            { upsert: true, new: true, runValidators: true }
+                        );
+                    } catch (err) {
+                        console.error("[ChatbotEngine] Failed to update contact:", err);
+                    }
+                }
+
+                // Move instantly to the next node (Action nodes don't wait)
                 const nextNode = getNextGenericNode(currentNode.id, incomingMessage);
                 if (!nextNode) {
                     currentNode = null;
