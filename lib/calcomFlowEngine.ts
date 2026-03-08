@@ -4,6 +4,7 @@
 import dbConnect from "@/lib/db";
 import AutomationFlow from "@/models/AutomationFlow";
 import WhatsAppConfig from "@/models/WhatsAppConfig";
+import CalComLog from "@/models/CalComLog";
 
 export interface CalComBookingPayload {
     triggerEvent: string;
@@ -81,7 +82,8 @@ async function sendWhatsAppTemplate(
 async function executeFlow(
     flow: any,
     waConfig: any,
-    bookingVars: Record<string, string>
+    bookingVars: Record<string, string>,
+    bookingPayload: CalComBookingPayload
 ) {
     const nodes: any[] = flow.flowData?.nodes || [];
     const edges: any[] = flow.flowData?.edges || [];
@@ -112,6 +114,10 @@ async function executeFlow(
     let visitedIds = new Set<string>();
     let queue = edgeMap[triggerNode.id] || [];
 
+    let finalStatus: "success" | "failed" = "success";
+    let finalErrorMessage = "";
+    let templateNameLogged = "";
+
     while (queue.length > 0) {
         const nodeId = queue.shift()!;
         if (visitedIds.has(nodeId)) continue;
@@ -122,44 +128,57 @@ async function executeFlow(
 
         try {
             if (node.type === "sendMessageNode") {
-                // Plain text or interactive message (instant send)
                 const rawMessage = (node.data?.message as string) || "";
                 const message = interpolateVariables(rawMessage, bookingVars);
-
                 if (message.trim()) {
                     await sendWhatsAppText(phoneNumberId, accessToken, recipientPhone, message);
                     console.log(`[CalComEngine] ✅ Sent text message to ${recipientPhone}`);
                 }
-
             } else if (node.type === "calcomTemplateNode") {
-                // Send WhatsApp approved template with dynamic variables
                 const templateName = (node.data?.templateName as string) || "";
                 const languageCode = (node.data?.languageCode as string) || "en_US";
                 const mappings: string[] = (node.data?.variableMappings as string[]) || [];
 
                 if (templateName) {
+                    templateNameLogged = templateName;
                     const resolvedVars = mappings.map((m) => interpolateVariables(m, bookingVars));
                     await sendWhatsAppTemplate(phoneNumberId, accessToken, recipientPhone, templateName, languageCode, resolvedVars);
                     console.log(`[CalComEngine] ✅ Sent template "${templateName}" to ${recipientPhone}`);
                 }
-
             } else if (node.type === "delayNode") {
-                // Schedule via QStash for delayed execution
-                // For now we just log — QStash integration can be added as a next step
                 const delayMinutes = parseInt(node.data?.delayMinutes as string) || 0;
                 if (delayMinutes > 0) {
                     console.log(`[CalComEngine] ⏰ Delay node: ${delayMinutes} mins (QStash scheduling needed for full support)`);
-                    // TODO: Use QStash to fire remaining nodes after delay
                 }
             }
 
-            // Queue next nodes
             const nextNodes = edgeMap[nodeId] || [];
             queue.push(...nextNodes);
 
         } catch (nodeErr: any) {
+            finalStatus = "failed";
+            finalErrorMessage = nodeErr.message || "Execution error";
             console.error(`[CalComEngine] Error executing node ${nodeId}:`, nodeErr.message);
+            break; // Stop flow on hard error
         }
+    }
+
+    // Save execution log
+    try {
+        await CalComLog.create({
+            educatorId: flow.educatorId,
+            ruleId: flow._id,
+            ruleName: flow.name,
+            triggerEvent: bookingPayload.triggerEvent,
+            bookingUid: bookingPayload.bookingUid,
+            inviteeName: bookingPayload.inviteeName,
+            inviteePhone: recipientPhone,
+            templateName: templateNameLogged || "Flow Nodes",
+            status: finalStatus,
+            errorMessage: finalErrorMessage,
+        });
+    } catch (logErr) {
+        console.error("[CalComEngine] Failed to save log:", logErr);
     }
 }
 
@@ -216,6 +235,6 @@ export async function runCalComFlows(
 
     for (const flow of flows) {
         console.log(`[CalComEngine] 🚀 Running flow: "${flow.name}" for ${bookingPayload.inviteeName}`);
-        await executeFlow(flow, waConfig, bookingVars);
+        await executeFlow(flow, waConfig, bookingVars, bookingPayload);
     }
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { Handle, Position, NodeProps, useReactFlow } from "@xyflow/react";
-import { Calendar, Clock, Trash2, Layout, Plus, X } from "lucide-react";
+import { Calendar, Clock, Trash2, Layout, Plus, X, Loader2, AlertCircle } from "lucide-react";
 
 const CALCOM_VARIABLES = [
     { key: "{{invitee_name}}", label: "Invitee Name" },
@@ -69,16 +69,51 @@ export const CalcomTriggerNode = memo(({ data, isConnectable, id }: NodeProps) =
 });
 CalcomTriggerNode.displayName = "CalcomTriggerNode";
 
-// --- Cal.com Template Node ---
 export const CalcomTemplateNode = memo(({ data, isConnectable, id }: NodeProps) => {
     const { updateNodeData, deleteElements } = useReactFlow();
     const mappings: string[] = (data?.variableMappings as string[]) || ["", "", ""];
+
+    const [templates, setTemplates] = useState<any[]>([]);
+    const [loadingTemplates, setLoadingTemplates] = useState(false);
+    const [templateError, setTemplateError] = useState("");
+
+    useEffect(() => {
+        let isMounted = true;
+        const fetchTemplates = async () => {
+            setLoadingTemplates(true);
+            try {
+                const res = await fetch("/api/calcom/templates");
+                const json = await res.json();
+                if (isMounted) {
+                    if (json.success) setTemplates(json.templates);
+                    else setTemplateError(json.error || "Failed to load templates");
+                }
+            } catch (err) {
+                if (isMounted) setTemplateError("Error loading templates");
+            } finally {
+                if (isMounted) setLoadingTemplates(false);
+            }
+        };
+        fetchTemplates();
+        return () => { isMounted = false; };
+    }, []);
 
     const updateMapping = (index: number, value: string) => {
         const newMappings = [...mappings];
         newMappings[index] = value;
         updateNodeData(id, { variableMappings: newMappings });
     };
+
+    const handleTemplateSelect = (t: any) => {
+        updateNodeData(id, {
+            templateName: t.name,
+            languageCode: t.language,
+            variableMappings: Array(t.variableCount).fill("")
+        });
+    };
+
+    const selectedTemplate = templates.find(t => t.name === data?.templateName);
+    const currentMappings = (data?.variableMappings as string[]) || [];
 
     return (
         <div className="bg-white border-2 border-purple-500 rounded-xl shadow-lg w-72 overflow-hidden group">
@@ -95,45 +130,63 @@ export const CalcomTemplateNode = memo(({ data, isConnectable, id }: NodeProps) 
             <div className="p-4 space-y-3">
                 <div className="space-y-1">
                     <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Template Name</div>
-                    <input
-                        type="text"
-                        value={(data?.templateName as string) || ""}
-                        onChange={(e) => updateNodeData(id, { templateName: e.target.value })}
-                        placeholder="e.g. booking_confirmation"
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 nodrag"
-                    />
-                </div>
-                <div className="space-y-1">
-                    <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Language Code</div>
-                    <input
-                        type="text"
-                        value={(data?.languageCode as string) || "en_US"}
-                        onChange={(e) => updateNodeData(id, { languageCode: e.target.value })}
-                        placeholder="en_US"
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 nodrag"
-                    />
-                </div>
-                <div className="space-y-2">
-                    <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Variable Mapping</div>
-                    <p className="text-[10px] text-zinc-400">Map Cal.com data to your template variables ({"{{1}}"}, {"{{2}}"}, {"{{3}}"})</p>
-                    {mappings.map((val, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                            <span className="text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-100 px-2 py-1 rounded shrink-0">
-                                {`{{${i + 1}}}`}
-                            </span>
-                            <select
-                                value={val}
-                                onChange={(e) => updateMapping(i, e.target.value)}
-                                className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 nodrag"
-                            >
-                                <option value="">-- Select variable --</option>
-                                {CALCOM_VARIABLES.map((v) => (
-                                    <option key={v.key} value={v.key}>{v.label}</option>
-                                ))}
-                            </select>
+                    {loadingTemplates ? (
+                        <div className="flex items-center gap-2 text-xs text-zinc-500 py-2">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Loading templates...
                         </div>
-                    ))}
+                    ) : templateError ? (
+                        <div className="flex items-start gap-1 text-[10px] text-red-500 bg-red-50 p-1.5 rounded border border-red-100">
+                            <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" /> {templateError}
+                        </div>
+                    ) : (
+                        <select
+                            value={(data?.templateName as string) || ""}
+                            onChange={(e) => {
+                                const t = templates.find(temp => temp.name === e.target.value);
+                                if (t) handleTemplateSelect(t);
+                            }}
+                            className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 nodrag font-mono"
+                        >
+                            <option value="">-- Select Template --</option>
+                            {templates.map(t => (
+                                <option key={t.name} value={t.name}>{t.name} ({t.variableCount} vars)</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
+
+                {selectedTemplate && selectedTemplate.bodyText && (
+                    <div className="bg-purple-50 p-2 rounded-lg border border-purple-100">
+                        <p className="text-[10px] text-purple-800 line-clamp-3 leading-relaxed">{selectedTemplate.bodyText}</p>
+                    </div>
+                )}
+
+                {(selectedTemplate?.variableCount || 0) > 0 && (
+                    <div className="space-y-2 pt-2 border-t border-zinc-100">
+                        <div className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Variable Mapping</div>
+                        {Array.from({ length: selectedTemplate.variableCount }).map((_, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold text-purple-600 bg-purple-50 border border-purple-100 px-2 py-1 rounded shrink-0">
+                                    {`{{${i + 1}}}`}
+                                </span>
+                                <select
+                                    value={currentMappings[i] || ""}
+                                    onChange={(e) => {
+                                        const newM = [...currentMappings];
+                                        newM[i] = e.target.value;
+                                        updateNodeData(id, { variableMappings: newM });
+                                    }}
+                                    className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 nodrag"
+                                >
+                                    <option value="">-- Variable --</option>
+                                    {CALCOM_VARIABLES.map((v) => (
+                                        <option key={v.key} value={v.key}>{v.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
             <Handle type="source" position={Position.Bottom} id="a" isConnectable={isConnectable} className="w-3 h-3 bg-purple-500" />
         </div>
