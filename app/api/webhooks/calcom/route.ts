@@ -3,6 +3,7 @@ import dbConnect from "@/lib/db";
 import CalComIntegration from "@/models/CalComIntegration";
 import CalComWebhookLog from "@/models/CalComWebhookLog";
 import { runCalComFlows, CalComBookingPayload } from "@/lib/calcomFlowEngine";
+import CalComLog from "@/models/CalComLog";
 
 export async function POST(req: Request) {
     try {
