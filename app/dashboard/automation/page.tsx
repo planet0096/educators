@@ -21,7 +21,8 @@ export default function AutomationDashboardPage() {
 
     const fetchFlows = async () => {
         try {
-            const res = await fetch("/api/automation/flows");
+            // Only fetch chatbot flows — Cal.com flows are managed under Cal Flows
+            const res = await fetch("/api/automation/flows?source=chatbot");
             const data = await res.json();
             if (data.success) {
                 setFlows(data.flows);

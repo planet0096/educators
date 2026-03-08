@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     LayoutDashboard, Search, Users, BookOpen, Zap,
     Bell, Menu, X, Mail, MessageCircle, Calendar, Rss,
-    PanelLeftClose, PanelLeftOpen, User
+    PanelLeftClose, PanelLeftOpen, User, ChevronDown, Inbox
 } from "lucide-react";
 import UserDropdown from "@/components/UserDropdown";
 
@@ -18,57 +18,52 @@ interface SidebarLayoutProps {
     userEmail: string;
 }
 
+const waSubLinks = [
+    { name: "Chatbot Flows", href: "/dashboard/automation", icon: Zap },
+    { name: "Cal Flows", href: "/dashboard/calcom-automations", icon: Calendar },
+    { name: "Inbox", href: "/dashboard/inbox", icon: Inbox },
+];
+
+const topLinks = [
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "My Profile", href: "/dashboard/profile", icon: User },
+    { name: "Find Students", href: "/dashboard/students", icon: Search },
+    { name: "Leads CRM", href: "/dashboard/leads", icon: Users },
+];
+
+const studentLinks = [
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Find Educators", href: "/educators", icon: Search },
+    { name: "Resources", href: "#", icon: BookOpen },
+];
+
+const placeholderLinks = [
+    { name: "Email Campaigns", href: "#", icon: Mail, isNew: true },
+    { name: "Bookings", href: "#", icon: Calendar, isNew: true },
+    { name: "Feed & Blog", href: "#", icon: Rss, isNew: true },
+];
+
 export default function SidebarLayout({ children, userRole, walletBalance, userEmail }: SidebarLayoutProps) {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
-    // Desktop sidebar is pinned (open) by default
     const [isDesktopPinned, setIsDesktopPinned] = useState(true);
-
-    // The sidebar is visually expanded simply based on the pinned state
     const isDesktopExpanded = isDesktopPinned;
-
     const pathname = usePathname();
 
-    // Close sidebar on mobile when route changes
-    useEffect(() => {
-        setIsMobileOpen(false);
-    }, [pathname]);
+    // Auto-expand WhatsApp CRM group if on any submenu
+    const isOnWaSubpage = waSubLinks.some(l => pathname === l.href || pathname.startsWith(l.href + "/"));
+    const [waGroupOpen, setWaGroupOpen] = useState(isOnWaSubpage);
 
-    const educatorLinks = [
-        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-        { name: "My Profile", href: "/dashboard/profile", icon: User },
-        { name: "Find Students", href: "/dashboard/students", icon: Search },
-        { name: "Leads CRM", href: "/dashboard/leads", icon: Users },
-        { name: "WhatsApp CRM", href: "/dashboard/whatsapp", icon: MessageCircle },
-        { name: "Chatbot Flows", href: "/dashboard/automation", icon: Zap },
-        { name: "Integrations", href: "/dashboard/integrations", icon: Zap },
-        { name: "Cal.com Workflows", href: "/dashboard/calcom-automations", icon: Calendar },
-        { name: "Resources", href: "#", icon: BookOpen },
-    ];
+    useEffect(() => { setIsMobileOpen(false); }, [pathname]);
+    useEffect(() => { if (isOnWaSubpage) setWaGroupOpen(true); }, [pathname]);
 
-    const studentLinks = [
-        { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-        { name: "Find Educators", href: "/educators", icon: Search },
-        { name: "Resources", href: "#", icon: BookOpen },
-    ];
-
-    const placeholderLinks = [
-        { name: "Email Campaigns", href: "#", icon: Mail, isNew: true },
-        { name: "Bookings", href: "#", icon: Calendar, isNew: true },
-        { name: "Feed & Blog", href: "#", icon: Rss, isNew: true },
-    ];
-
-    const mainLinks = userRole === "educator" ? educatorLinks : studentLinks;
-
-    // The inner content rendered by both Mobile and Desktop sidebars
-    // It receives 'expanded' prop to know whether to show labels
     const SidebarContent = ({ expanded }: { expanded: boolean }) => (
         <div className={`flex-1 overflow-y-auto overflow-x-hidden py-6 space-y-8 scrollbar-hide ${expanded ? 'px-4' : 'px-3'}`}>
             {/* Main Menu */}
             <div>
                 {expanded && <p className="px-3 text-xs font-bold uppercase tracking-wider text-zinc-400 mb-3 whitespace-nowrap">Main Menu</p>}
                 <nav className="space-y-1">
-                    {mainLinks.map((link) => {
-                        const isActive = pathname === link.href || pathname.startsWith(`${link.href}/`);
+                    {(userRole === "educator" ? topLinks : studentLinks).map((link) => {
+                        const isActive = pathname === link.href || (link.href !== "/dashboard" && pathname.startsWith(`${link.href}/`));
                         return (
                             <Link
                                 key={link.name}
@@ -77,9 +72,7 @@ export default function SidebarLayout({ children, userRole, walletBalance, userE
                                 className={`
                                     flex items-center gap-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
                                     ${expanded ? 'px-3' : 'justify-center w-10 mx-auto'}
-                                    ${isActive
-                                        ? 'bg-zinc-900 text-white shadow-md shadow-zinc-900/10'
-                                        : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'}
+                                    ${isActive ? 'bg-zinc-900 text-white shadow-md shadow-zinc-900/10' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'}
                                 `}
                             >
                                 <link.icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-zinc-300' : 'text-zinc-400'}`} />
@@ -87,10 +80,85 @@ export default function SidebarLayout({ children, userRole, walletBalance, userE
                             </Link>
                         );
                     })}
+
+                    {/* WhatsApp CRM group — only for educators */}
+                    {userRole === "educator" && (
+                        <div>
+                            {/* Group header — toggles the submenu */}
+                            <button
+                                onClick={() => expanded && setWaGroupOpen(o => !o)}
+                                title={!expanded ? "WhatsApp CRM" : undefined}
+                                className={`
+                                    w-full flex items-center gap-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
+                                    ${expanded ? 'px-3' : 'justify-center w-10 mx-auto'}
+                                    ${isOnWaSubpage ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'}
+                                `}
+                            >
+                                <MessageCircle className={`w-5 h-5 shrink-0 ${isOnWaSubpage ? 'text-zinc-700' : 'text-zinc-400'}`} />
+                                {expanded && (
+                                    <>
+                                        <span className="whitespace-nowrap flex-1 text-left">WhatsApp CRM</span>
+                                        <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${waGroupOpen ? 'rotate-180' : ''}`} />
+                                    </>
+                                )}
+                            </button>
+
+                            {/* Submenus */}
+                            <AnimatePresence initial={false}>
+                                {expanded && waGroupOpen && (
+                                    <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: "auto", opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ duration: 0.2 }}
+                                        className="overflow-hidden"
+                                    >
+                                        <div className="mt-1 ml-4 pl-3 border-l border-zinc-200 space-y-0.5">
+                                            {waSubLinks.map((sub) => {
+                                                const isActive = pathname === sub.href || pathname.startsWith(sub.href + "/");
+                                                return (
+                                                    <Link
+                                                        key={sub.name}
+                                                        href={sub.href}
+                                                        className={`
+                                                            flex items-center gap-2.5 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-150
+                                                            ${isActive ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900'}
+                                                        `}
+                                                    >
+                                                        <sub.icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-zinc-300' : 'text-zinc-400'}`} />
+                                                        <span className="whitespace-nowrap">{sub.name}</span>
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            {/* Collapsed state: show sub-icons stacked */}
+                            {!expanded && waGroupOpen && (
+                                <div className="mt-1 space-y-0.5 flex flex-col items-center">
+                                    {waSubLinks.map((sub) => {
+                                        const isActive = pathname === sub.href || pathname.startsWith(sub.href + "/");
+                                        return (
+                                            <Link
+                                                key={sub.name}
+                                                href={sub.href}
+                                                title={sub.name}
+                                                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${isActive ? 'bg-zinc-900' : 'hover:bg-zinc-100'}`}
+                                            >
+                                                <sub.icon className={`w-4 h-4 ${isActive ? 'text-zinc-300' : 'text-zinc-400'}`} />
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </nav>
             </div>
 
-            {/* Marketing & Tools (Future) */}
+            {/* Growth Tools (Future) */}
             {userRole === "educator" && (
                 <div>
                     {expanded && (
@@ -119,14 +187,12 @@ export default function SidebarLayout({ children, userRole, walletBalance, userE
                             ))}
                         </nav>
                     ) : (
-                        // Collapsed state map, just icons
                         <div className="space-y-3 flex flex-col items-center border-t border-zinc-100 pt-6 mt-6">
                             {placeholderLinks.map((link) => (
                                 <div key={link.name} className="relative group cursor-not-allowed opacity-50">
                                     <div className="p-2.5 rounded-xl hover:bg-zinc-100 transition-colors">
                                         <link.icon className="w-5 h-5 text-zinc-400" />
                                     </div>
-                                    {/* Mini Tooltip */}
                                     <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2 py-1 bg-zinc-900 text-white text-[10px] font-bold rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
                                         {link.name}
                                     </div>
