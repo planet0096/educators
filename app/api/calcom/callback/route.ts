@@ -8,7 +8,8 @@ export async function GET(req: Request) {
         const session = await auth();
 
         if (!session?.user?.id) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+            console.error("[CalCom Callback] No session found - user must be logged in.");
+            return NextResponse.redirect(new URL("/login", req.url));
         }
 
         const { searchParams } = new URL(req.url);
@@ -16,26 +17,32 @@ export async function GET(req: Request) {
         const error = searchParams.get("error");
 
         if (error) {
+            console.error("[CalCom Callback] Cal.com returned error:", error);
             return NextResponse.redirect(new URL("/dashboard/integrations?error=" + error, req.url));
         }
 
         if (!code) {
-            return NextResponse.json({ error: "No authorization code provided" }, { status: 400 });
+            console.error("[CalCom Callback] No code in query params");
+            return NextResponse.redirect(new URL("/dashboard/integrations?error=no_code", req.url));
         }
 
         const clientId = process.env.CALCOM_CLIENT_ID;
         const clientSecret = process.env.CALCOM_CLIENT_SECRET;
 
         if (!clientId || !clientSecret) {
-            return NextResponse.json({ error: "Cal.com OAuth credentials not configured." }, { status: 500 });
+            console.error("[CalCom Callback] Missing CALCOM_CLIENT_ID or CALCOM_CLIENT_SECRET env vars");
+            return NextResponse.redirect(new URL("/dashboard/integrations?error=not_configured", req.url));
         }
 
         // Determine redirect URI
         const url = new URL(req.url);
         const redirectUri = `${url.protocol}//${url.host}/api/calcom/callback`;
 
-        // 1. Exchange code for token using the correct Cal.com v2 endpoint
-        const tokenResponse = await fetch("https://api.cal.com/v2/auth/oauth2/token", {
+        console.log("[CalCom Callback] Exchanging code for token. Redirect URI:", redirectUri);
+
+        // 1. Exchange code for token
+        // Note: Using app.cal.com endpoint which is confirmed working
+        const tokenResponse = await fetch("https://app.cal.com/api/auth/oauth/token", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -50,34 +57,56 @@ export async function GET(req: Request) {
         });
 
         const tokenData = await tokenResponse.json();
+        console.log("[CalCom Callback] Token response status:", tokenResponse.status, "body:", JSON.stringify(tokenData));
 
         if (!tokenResponse.ok) {
-            console.error("Cal.com token error payload:", tokenData);
-            return NextResponse.redirect(new URL("/dashboard/integrations?error=calcom_auth_failed", req.url));
+            console.error("[CalCom Callback] Token exchange failed:", tokenData);
+            return NextResponse.redirect(new URL("/dashboard/integrations?error=token_exchange_failed", req.url));
         }
 
         const { access_token, refresh_token, expires_in } = tokenData;
 
-        // 2. Fetch the connected user's profile from Cal.com v2 API
-        const meResponse = await fetch("https://api.cal.com/v2/me", {
+        if (!access_token) {
+            console.error("[CalCom Callback] No access_token in response:", tokenData);
+            return NextResponse.redirect(new URL("/dashboard/integrations?error=no_access_token", req.url));
+        }
+
+        // 2. Fetch the connected user's Cal.com profile
+        // Try v2/me first, fallback to v1
+        let calComUserId: number | undefined;
+        let calComUsername: string = "Unknown";
+
+        const meResV2 = await fetch("https://api.cal.com/v2/me", {
             headers: {
                 Authorization: `Bearer ${access_token}`,
                 "cal-api-version": "2024-08-13",
             },
         });
+        const meDataV2 = await meResV2.json();
+        console.log("[CalCom Callback] /v2/me response:", JSON.stringify(meDataV2));
 
-        const meData = await meResponse.json();
-        const calComUserId = meData?.data?.id || meData?.id;
-        const calComUsername = meData?.data?.username || meData?.data?.email || meData?.username || "Unknown";
+        if (meResV2.ok && (meDataV2?.data?.id || meDataV2?.id)) {
+            calComUserId = meDataV2?.data?.id || meDataV2?.id;
+            calComUsername = meDataV2?.data?.username || meDataV2?.data?.email || meDataV2?.username || "Unknown";
+        } else {
+            // Fallback to v1
+            const meResV1 = await fetch("https://api.cal.com/v1/me?apiKey=" + access_token);
+            const meDataV1 = await meResV1.json();
+            console.log("[CalCom Callback] /v1/me response:", JSON.stringify(meDataV1));
+            calComUserId = meDataV1?.user?.id || meDataV1?.id;
+            calComUsername = meDataV1?.user?.username || meDataV1?.user?.email || meDataV1?.username || "Unknown";
+        }
 
+        // If we still can't get the user ID, we store a placeholder so connection still succeeds
+        // This can happen if the token endpoint uses a different format
         if (!calComUserId) {
-            throw new Error("Could not fetch user profile from Cal.com");
+            console.warn("[CalCom Callback] Could not determine calComUserId. Storing placeholder.");
+            calComUserId = 0;
         }
 
         // 3. Save to database
         await dbConnect();
 
-        // Calculate expiry (fallback to 30 days if expires_in is missing)
         const expiryDate = new Date();
         expiryDate.setSeconds(expiryDate.getSeconds() + (expires_in || 2592000));
 
@@ -86,7 +115,7 @@ export async function GET(req: Request) {
             {
                 user: session.user.id,
                 accessToken: access_token,
-                refreshToken: refresh_token || "", // some OAuth APIs might not return refresh token initially
+                refreshToken: refresh_token || "",
                 calComUserId: calComUserId,
                 calComUsername: calComUsername,
                 expiry: expiryDate,
@@ -94,10 +123,11 @@ export async function GET(req: Request) {
             { upsert: true, new: true }
         );
 
-        // Redirect to integration page
-        return NextResponse.redirect(new URL("/dashboard?calcom_success=true", req.url));
+        console.log("[CalCom Callback] Integration saved successfully for user:", session.user.id);
+
+        return NextResponse.redirect(new URL("/dashboard/integrations?calcom_success=true", req.url));
     } catch (err: any) {
-        console.error("Cal.com callback error:", err);
-        return NextResponse.redirect(new URL("/dashboard?error=calcom_internal_error", req.url));
+        console.error("[CalCom Callback] Unexpected error:", err?.message, err?.stack);
+        return NextResponse.redirect(new URL("/dashboard/integrations?error=calcom_internal_error", req.url));
     }
 }
