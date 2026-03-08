@@ -39,6 +39,7 @@ export default function SidebarLayout({ children, userRole, walletBalance, userE
         { name: "Find Students", href: "/dashboard/students", icon: Search },
         { name: "Leads CRM", href: "/dashboard/leads", icon: Users },
         { name: "WhatsApp CRM", href: "/dashboard/whatsapp", icon: MessageCircle },
+        { name: "Integrations", href: "/dashboard/integrations", icon: Zap },
         { name: "Resources", href: "#", icon: BookOpen },
     ];
 
