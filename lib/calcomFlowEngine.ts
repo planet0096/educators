@@ -415,26 +415,29 @@ export async function runCalComFlows(
             }
 
             const callbackUrl = `${getAppUrl()}/api/calcom/queue`;
-            console.log(`[CalComEngine] Publishing QStash job → ${callbackUrl}, fires at ${executeAtDate.toISOString()}`);
+            const delaySeconds = Math.floor((executeAtDate.getTime() - Date.now()) / 1000);
+            const QSTASH_MAX_DELAY_SECONDS = 604800; // 7 days — QStash free tier limit
 
+            if (delaySeconds > QSTASH_MAX_DELAY_SECONDS) {
+                // Meeting is more than 7 days away — save as pending, cron will pick it up
+                console.log(`[CalComEngine] ⏳ Meeting is ${Math.ceil(delaySeconds / 86400)} days away (> 7-day QStash limit). Saved as pending — daily cron will schedule it closer to the date.`);
+                if (scheduledLog) {
+                    await CalComLog.findByIdAndUpdate(scheduledLog._id, {
+                        flowState: { isReminder: true, resumeNodeId, bookingVars, bookingPayload, pendingQstashPublish: true }
+                    });
+                }
+                continue;
+            }
+
+            console.log(`[CalComEngine] Publishing QStash job → ${callbackUrl}, fires at ${executeAtDate.toISOString()}`);
             try {
                 const published = await qstash.publishJSON({
                     url: callbackUrl,
-                    body: {
-                        flowId: flow._id,
-                        educatorId: flow.educatorId,
-                        bookingVars,
-                        bookingPayload,
-                        resumeNodeId
-                    },
+                    body: { flowId: flow._id, educatorId: flow.educatorId, bookingVars, bookingPayload, resumeNodeId },
                     notBefore: Math.floor(executeAtDate.getTime() / 1000)
                 });
-
-                // Update the log with the real QStash message ID
                 if (scheduledLog) {
-                    await CalComLog.findByIdAndUpdate(scheduledLog._id, {
-                        qstashMessageId: published.messageId
-                    });
+                    await CalComLog.findByIdAndUpdate(scheduledLog._id, { qstashMessageId: published.messageId });
                 }
                 console.log(`[CalComEngine] ✅ Scheduled Reminder "${flow.name}" via QStash for ${executeAtDate.toISOString()} (msgId: ${published.messageId})`);
             } catch (e: any) {
