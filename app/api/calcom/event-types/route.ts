@@ -16,13 +16,6 @@ export async function GET() {
     }
 
     try {
-        const res = await fetch("https://api.cal.com/v1/event-types", {
-            headers: {
-                "Content-Type": "application/json",
-            },
-            // Cal.com API v1 expects the apiKey as a query param
-        });
-
         const fullUrl = `https://api.cal.com/v1/event-types?apiKey=${integration.apiKey}`;
         const fetchRes = await fetch(fullUrl, {
             headers: { "Content-Type": "application/json" }
