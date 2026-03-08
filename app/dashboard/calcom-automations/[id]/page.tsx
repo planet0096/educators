@@ -101,6 +101,7 @@ function CalcomFlowBuilder() {
             const payload = {
                 flowData: { nodes: flowData.nodes, edges: flowData.edges },
                 triggerType: triggerNode?.data?.triggerType || flowTriggerType,
+                calcomEventTypes: triggerNode?.data?.calcomEventTypes || [],
                 source: "calcom",
             };
             const res = await fetch(`/api/automation/flows/${flowId}`, {

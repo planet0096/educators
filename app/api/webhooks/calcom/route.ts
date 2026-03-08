@@ -9,7 +9,26 @@ export async function POST(req: Request) {
         const body = await req.json();
         const { triggerEvent, payload } = body;
 
-        if (!["booking.created", "booking.cancelled", "booking.rescheduled"].includes(triggerEvent)) {
+        await dbConnect();
+
+        // 1. Immediately log the raw webhook for troubleshooting
+        let rawLogId: string | null = null;
+        try {
+            const rawLog = await CalComWebhookLog.create({
+                triggerEvent,
+                payload,
+                processed: false,
+            });
+            rawLogId = rawLog._id.toString();
+        } catch (e) {
+            console.error("[CalCom Webhook] Failed to save raw log", e);
+        }
+
+        // Normalize trigger event (Cal.com sends BOOKING_CREATED, old ver sends booking.created)
+        const normalizedEvent = (triggerEvent || "").toLowerCase().replace("_", ".");
+
+        if (!["booking.created", "booking.cancelled", "booking.rescheduled"].includes(normalizedEvent)) {
+            if (rawLogId) await CalComWebhookLog.findByIdAndUpdate(rawLogId, { errorReason: `Ignored event type: ${triggerEvent}` });
             return NextResponse.json({ message: "Event type ignored" }, { status: 200 });
         }
 
@@ -40,21 +59,6 @@ export async function POST(req: Request) {
         const eventTypeId = payload.eventType?.id ? String(payload.eventType.id) : "";
         const bookingUid = payload.uid || "";
 
-        await dbConnect();
-
-        // 1. Immediately log the raw webhook for troubleshooting
-        let rawLogId: string | null = null;
-        try {
-            const rawLog = await CalComWebhookLog.create({
-                triggerEvent,
-                payload,
-                processed: false,
-            });
-            rawLogId = rawLog._id.toString();
-        } catch (e) {
-            console.error("[CalCom Webhook] Failed to save raw log", e);
-        }
-
         // Find the educator's integration by Cal.com userId or username
         let integration = await CalComIntegration.findOne({ calComUserId });
         if (!integration && calComUsername) {
@@ -77,7 +81,7 @@ export async function POST(req: Request) {
         if (rawLogId) await CalComWebhookLog.findByIdAndUpdate(rawLogId, { processed: true });
 
         const bookingPayload: CalComBookingPayload = {
-            triggerEvent,
+            triggerEvent: normalizedEvent,
             inviteeName,
             inviteePhone,
             inviteeEmail,
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
         };
 
         // Run all matching Cal.com automation flows
-        await runCalComFlows(educatorUserId, triggerEvent, bookingPayload);
+        await runCalComFlows(educatorUserId, normalizedEvent, bookingPayload);
 
         return NextResponse.json({ success: true, message: "Cal.com flows executed" }, { status: 200 });
 
