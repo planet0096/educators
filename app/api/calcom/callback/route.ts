@@ -16,7 +16,7 @@ export async function GET(req: Request) {
         const error = searchParams.get("error");
 
         if (error) {
-            return NextResponse.redirect(new URL("/settings/integrations?error=" + error, req.url));
+            return NextResponse.redirect(new URL("/dashboard/integrations?error=" + error, req.url));
         }
 
         if (!code) {
