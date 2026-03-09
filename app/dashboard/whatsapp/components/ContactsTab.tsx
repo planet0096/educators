@@ -4,8 +4,9 @@ import {
     UserPlus, Loader2, Trash2, Search, ChevronLeft, ChevronRight, X, Mail,
     Phone, ChevronUp, ChevronDown, ChevronsUpDown, Pencil, CheckSquare,
     Square, Tags, List, Settings2, AlertCircle, Building2, MapPin, Globe,
-    FileText, Calendar, Zap, Hash, SlidersHorizontal, Eye, EyeOff
+    FileText, Calendar, Zap, Hash, SlidersHorizontal, Eye, EyeOff, UploadCloud
 } from "lucide-react";
+import ImportCsvModal from "./ImportCsvModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -218,6 +219,7 @@ export default function ContactsTab() {
 
     // Modals
     const [isAddOpen, setIsAddOpen] = useState(false);
+    const [isImportOpen, setIsImportOpen] = useState(false);
     const [editContact, setEditContact] = useState<Contact | null>(null);
 
     // Form state (shared add/edit)
@@ -570,13 +572,22 @@ export default function ContactsTab() {
                         )}
                     </div>
 
-                    <button
-                        onClick={openAdd}
-                        className="bg-emerald-600 text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-2"
-                    >
-                        <UserPlus className="w-4 h-4" />
-                        Add Contact
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setIsImportOpen(true)}
+                            className="bg-zinc-100 text-zinc-700 rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-zinc-200 transition-colors shadow-sm flex items-center gap-2 border border-zinc-200"
+                        >
+                            <UploadCloud className="w-4 h-4" />
+                            Import CSV
+                        </button>
+                        <button
+                            onClick={openAdd}
+                            className="bg-emerald-600 text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-emerald-700 transition-colors shadow-sm flex items-center gap-2"
+                        >
+                            <UserPlus className="w-4 h-4" />
+                            Add Contact
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -766,9 +777,9 @@ export default function ContactsTab() {
                                             <td className="px-4 py-3.5 text-sm text-zinc-500">
                                                 {c.source
                                                     ? <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${c.source === "Manual" ? "bg-zinc-100 text-zinc-500" :
-                                                            c.source === "Import" ? "bg-blue-50 text-blue-600" :
-                                                                c.source === "Chatbot" ? "bg-emerald-50 text-emerald-700" :
-                                                                    "bg-violet-50 text-violet-600"
+                                                        c.source === "Import" ? "bg-blue-50 text-blue-600" :
+                                                            c.source === "Chatbot" ? "bg-emerald-50 text-emerald-700" :
+                                                                "bg-violet-50 text-violet-600"
                                                         }`}>{c.source}</span>
                                                     : <span className="text-zinc-300 italic text-xs">—</span>
                                                 }
@@ -1047,6 +1058,18 @@ export default function ContactsTab() {
                     </div>
                 </div>
             )}
+            <ImportCsvModal
+                isOpen={isImportOpen}
+                onClose={() => setIsImportOpen(false)}
+                onSuccess={() => {
+                    setPage(1);
+                    fetchContacts();
+                }}
+                customFields={customFields}
+                availableLists={availableLists}
+                availableTags={availableTags}
+            />
+
         </div>
     );
 }

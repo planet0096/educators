@@ -30,6 +30,7 @@ const topLinks = [
     { name: "My Profile", href: "/dashboard/profile", icon: User },
     { name: "Find Students", href: "/dashboard/students", icon: Search },
     { name: "Leads CRM", href: "/dashboard/leads", icon: Users },
+    { name: "Integrations", href: "/dashboard/integrations", icon: Rss },
 ];
 
 const studentLinks = [

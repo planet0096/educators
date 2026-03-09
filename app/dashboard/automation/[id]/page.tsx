@@ -131,7 +131,11 @@ function FlowBuilderCanvas() {
                 const savedEdges = data.flow.flowData?.edges || [];
 
                 if (savedNodes.length > 0) {
-                    setNodes(savedNodes);
+                    const loadedCustomFields = cfData.success && cfData.fields ? cfData.fields : [];
+                    const mappedNodes = savedNodes.map((node: any) =>
+                        node.type === 'updateContactNode' ? { ...node, data: { ...node.data, customFields: loadedCustomFields } } : node
+                    );
+                    setNodes(mappedNodes);
                     setEdges(savedEdges);
                 } else {
                     setNodes(initialNodes);
@@ -181,7 +185,10 @@ function FlowBuilderCanvas() {
         try {
             const parsed = JSON.parse(jsonInput);
             if (parsed.nodes && Array.isArray(parsed.nodes)) {
-                setNodes(parsed.nodes);
+                const mappedNodes = parsed.nodes.map((node: any) =>
+                    node.type === 'updateContactNode' ? { ...node, data: { ...node.data, customFields } } : node
+                );
+                setNodes(mappedNodes);
             }
             if (parsed.edges && Array.isArray(parsed.edges)) {
                 setEdges(parsed.edges);
