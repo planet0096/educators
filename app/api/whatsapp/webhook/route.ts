@@ -114,9 +114,7 @@ export async function POST(req: NextRequest) {
                     const wamId = msg.id;
                     const ts = new Date(parseInt(msg.timestamp) * 1000);
 
-                    // Extract message body
-                    let type: string = msg.type ?? "unknown";
-                    let body_text = "";
+                    // Extract message body (type and body_text are already declared)
                     let mediaUrl = "";
                     let mimeType = "";
 
