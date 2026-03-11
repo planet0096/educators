@@ -17,7 +17,7 @@ import {
     Panel
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload, Wand2, Database } from "lucide-react";
+import { Save, ChevronLeft, Loader2, MessageSquare, Clock, Settings2, Activity, RefreshCw, Code, X, Download, Upload, Wand2, Database, ExternalLink } from "lucide-react";
 import toast from "react-hot-toast";
 import dagre from "dagre";
 
@@ -520,10 +520,21 @@ function FlowBuilderCanvas() {
                 <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl flex flex-col max-h-[90vh] overflow-hidden">
                         <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50 shrink-0">
-                            <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
-                                <Code className="w-5 h-5 text-indigo-500" />
-                                Flow JSON Source
-                            </h2>
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+                                    <Code className="w-5 h-5 text-indigo-500" />
+                                    Flow JSON Source
+                                </h2>
+                                <a
+                                    href="/docs/flow-json"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg transition-colors"
+                                >
+                                    <ExternalLink className="w-3 h-3" />
+                                    View Documentation
+                                </a>
+                            </div>
                             <button
                                 onClick={() => setShowJsonModal(false)}
                                 className="p-2 hover:bg-zinc-200 rounded-lg text-zinc-500 transition-colors"

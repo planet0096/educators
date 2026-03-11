@@ -134,8 +134,18 @@ export async function POST(req: NextRequest) {
                         // Push to QStash queue instead of an unreliable detached fetch
                         // This ensures 100% execution guarantee even if Vercel serverless functions time out.
                         if (process.env.QSTASH_TOKEN) {
+                            // Build the correct base URL for QStash to call back.
+                            // Priority: NEXTAUTH_URL (if not localhost) → VERCEL_URL env → fallback.
+                            const nextAuthUrl = process.env.NEXTAUTH_URL || "";
+                            const isLocalhost = nextAuthUrl.includes("localhost") || nextAuthUrl.includes("127.0.0.1");
+                            const baseUrl = !isLocalhost && nextAuthUrl
+                                ? nextAuthUrl
+                                : process.env.VERCEL_URL
+                                    ? `https://${process.env.VERCEL_URL}`
+                                    : "https://educators-git-main-planet0096s-projects.vercel.app";
+
                             await qstash.publishJSON({
-                                url: `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/api/whatsapp/chatbot/queue`,
+                                url: `${baseUrl}/api/whatsapp/chatbot/queue`,
                                 body: {
                                     educatorId: educatorId.toString(),
                                     contactPhone,
