@@ -77,40 +77,55 @@ export async function POST(req: NextRequest) {
                         else if (inter.type === "list_reply") body_text = inter.list_reply?.title || "";
                     }
 
+                    const contactPhone = msg.from?.replace(/[\+\s\-]/g, "") || "";
+
                     // If multiple configs share the same number, try to route to the one with an active flow for this keyword
-                    if (configs.length > 1 && body_text) {
+                    if (configs.length > 1 && body_text && contactPhone) {
                         const SearchText = body_text.toLowerCase().trim();
                         
-                        // We will dynamically query AutomationFlows to see which config actually owns the trigger
+                        // We will dynamically query to see which config actually owns the trigger or active session
                         const mongoose = require('mongoose');
                         const AutomationFlow = mongoose.models.AutomationFlow || mongoose.model('AutomationFlow');
+                        const AutomationSession = mongoose.models.AutomationSession || mongoose.model('AutomationSession');
                         
                         let foundOwner = false;
+
+                        // 1. Check if any educator has an active session for this contact
                         for (const c of configs) {
-                            const flows = await AutomationFlow.find({ educatorId: c.user, isActive: true });
-                            for (const flow of flows) {
-                                if (flow.triggerType === "catch_all") {
-                                    targetConfig = c; // Fallback to catch-all
-                                } else if (flow.triggerType === "keyword" && flow.keywords) {
-                                    let keywordList: string[] = [];
-                                    if (Array.isArray(flow.keywords)) keywordList = flow.keywords;
-                                    else if (typeof flow.keywords === "string") keywordList = flow.keywords.split(",").map((k: string) => k.trim());
-                                    
-                                    if (keywordList.some(k => SearchText.includes(k.toLowerCase().trim()))) {
-                                        targetConfig = c;
-                                        foundOwner = true;
-                                        break;
+                            const activeSession = await AutomationSession.findOne({ educatorId: c.user, contactPhone, status: "active" });
+                            if (activeSession) {
+                                targetConfig = c;
+                                foundOwner = true;
+                                break;
+                            }
+                        }
+
+                        // 2. If no active session is found, check for keyword triggers
+                        if (!foundOwner) {
+                            for (const c of configs) {
+                                const flows = await AutomationFlow.find({ educatorId: c.user, isActive: true });
+                                for (const flow of flows) {
+                                    if (flow.triggerType === "catch_all") {
+                                        targetConfig = c; // Fallback to catch-all
+                                    } else if (flow.triggerType === "keyword" && flow.keywords) {
+                                        let keywordList: string[] = [];
+                                        if (Array.isArray(flow.keywords)) keywordList = flow.keywords;
+                                        else if (typeof flow.keywords === "string") keywordList = flow.keywords.split(",").map((k: string) => k.trim());
+                                        
+                                        if (keywordList.some(k => SearchText.includes(k.toLowerCase().trim()))) {
+                                            targetConfig = c;
+                                            foundOwner = true;
+                                            break;
+                                        }
                                     }
                                 }
+                                if (foundOwner) break;
                             }
-                            if (foundOwner) break;
                         }
                     }
 
                     const educatorId = targetConfig.user;
                     const config = targetConfig;
-                    // normalize phone number (strip + and spaces)
-                    const contactPhone = msg.from?.replace(/[\+\s\-]/g, "") || "";
                     const wamId = msg.id;
                     const ts = new Date(parseInt(msg.timestamp) * 1000);
 
