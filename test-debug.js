@@ -14,19 +14,22 @@ async function run() {
 
   console.log("\n=== Recent Webhooks === ");
   const logs = await mongoose.connection.collection('webhooklogs')
-    .find({ "payload.entry.0.changes.0.value.messages": { $exists: true } })
+    .find({ $or: [{ "payload.qstash_success": true }, { "payload.qstash_error": true }] })
     .sort({ _id: -1 })
     .limit(3)
     .toArray();
 
   for (const log of logs) {
-    const msg = log.payload?.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
-    if (msg) console.log(`Received message: "${msg.text?.body}" from ${msg.from}`);
+    console.log(`[${log._id.getTimestamp()}] QStash Log:`, JSON.stringify(log.payload, null, 2));
   }
 
-  console.log("\n=== Active Sessions ===");
-  const sessions = await mongoose.connection.collection('automationsessions').find({}).toArray();
-  console.log(JSON.stringify(sessions, null, 2));
+  console.log("\n=== Stuck Active Sessions ===");
+  const activeSessions = await mongoose.connection.collection('automationsessions').find({ status: "active" }).toArray();
+  console.log(JSON.stringify(activeSessions, null, 2));
+
+  console.log("\n=== Engine Locked Sessions ===");
+  const lockedSessions = await mongoose.connection.collection('automationsessions').find({ engineLocked: true }).toArray();
+  console.log(JSON.stringify(lockedSessions, null, 2));
 
   process.exit(0);
 }

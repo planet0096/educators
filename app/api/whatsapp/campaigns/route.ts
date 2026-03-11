@@ -135,10 +135,7 @@ export async function POST(req: Request) {
 
         if (!isLocalDev && process.env.QSTASH_TOKEN) {
             // ── PRODUCTION: push each contact as an independent QStash background job ──
-            const baseUrl = process.env.VERCEL_URL
-                ? `https://${process.env.VERCEL_URL}`
-                : process.env.NEXTAUTH_URL || "https://educators-git-main-planet0096s-projects.vercel.app";
-            const consumerUrl = `${baseUrl}/api/whatsapp/campaigns/queue`;
+            const consumerUrl = `${process.env.NEXTAUTH_URL}/api/whatsapp/campaigns/queue`;
             const batchPublishes = (insertedMessages as any[]).map((msg, idx) =>
                 qstash.publishJSON({
                     url: consumerUrl,

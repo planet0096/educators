@@ -57,14 +57,58 @@ export async function POST(req: NextRequest) {
 
                 if (!phoneNumberId) continue;
 
-                // Find which educator owns this phone number ID
-                const config = await WhatsAppConfig.findOne({ phoneNumberId });
-                if (!config) continue;
+                // Find ALL educators who own this phone number ID (e.g. Meta test numbers)
+                const configs = await WhatsAppConfig.find({ phoneNumberId });
+                if (!configs || configs.length === 0) continue;
 
-                const educatorId = config.user;
+                // Default to the first config
+                let targetConfig = configs[0];
 
                 // ── Handle incoming messages ────────────────────────────────
                 for (const msg of value?.messages ?? []) {
+                    const type = msg.type ?? "unknown";
+                    let body_text = "";
+                    
+                    if (type === "text") {
+                        body_text = msg.text?.body ?? "";
+                    } else if (msg.interactive) {
+                        const inter = msg.interactive;
+                        if (inter.type === "button_reply") body_text = inter.button_reply?.title || "";
+                        else if (inter.type === "list_reply") body_text = inter.list_reply?.title || "";
+                    }
+
+                    // If multiple configs share the same number, try to route to the one with an active flow for this keyword
+                    if (configs.length > 1 && body_text) {
+                        const SearchText = body_text.toLowerCase().trim();
+                        
+                        // We will dynamically query AutomationFlows to see which config actually owns the trigger
+                        const mongoose = require('mongoose');
+                        const AutomationFlow = mongoose.models.AutomationFlow || mongoose.model('AutomationFlow');
+                        
+                        let foundOwner = false;
+                        for (const c of configs) {
+                            const flows = await AutomationFlow.find({ educatorId: c.user, isActive: true });
+                            for (const flow of flows) {
+                                if (flow.triggerType === "catch_all") {
+                                    targetConfig = c; // Fallback to catch-all
+                                } else if (flow.triggerType === "keyword" && flow.keywords) {
+                                    let keywordList: string[] = [];
+                                    if (Array.isArray(flow.keywords)) keywordList = flow.keywords;
+                                    else if (typeof flow.keywords === "string") keywordList = flow.keywords.split(",").map((k: string) => k.trim());
+                                    
+                                    if (keywordList.some(k => SearchText.includes(k.toLowerCase().trim()))) {
+                                        targetConfig = c;
+                                        foundOwner = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (foundOwner) break;
+                        }
+                    }
+
+                    const educatorId = targetConfig.user;
+                    const config = targetConfig;
                     // normalize phone number (strip + and spaces)
                     const contactPhone = msg.from?.replace(/[\+\s\-]/g, "") || "";
                     const wamId = msg.id;

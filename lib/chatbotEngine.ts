@@ -7,47 +7,35 @@ import mongoose from "mongoose";
 // Acquire a mutually exclusive lock on the specific contact's session to prevent race conditions
 // when the user fires two rapid messages at the webhook simultaneously.
 async function acquireLock(educatorId: string, contactPhone: string, maxWaitMs = 5000): Promise<boolean> {
+    const lockKey = `${educatorId}_${contactPhone}_lock`;
     const start = Date.now();
-    const LOCK_TTL_MS = 30_000; // A lock older than 30s is considered stale from a crash
 
     while (Date.now() - start < maxWaitMs) {
-        const staleThreshold = new Date(Date.now() - LOCK_TTL_MS);
-
-        // Break any stale locks from crashed/timed-out previous invocations
-        await AutomationSession.updateMany(
-            { educatorId, contactPhone, engineLocked: true, lockedAt: { $lt: staleThreshold } },
-            { $unset: { engineLocked: 1, lockedAt: 1 } }
-        );
-
-        // Only acquire a lock on sessions that are actually "active" (mid-flow).
-        // Completed/failed sessions should never block lock acquisition.
+        // Try to atomically set an 'engineLocked' flag on the session (or create a phantom session if none exists)
         const session = await AutomationSession.findOneAndUpdate(
-            {
-                educatorId,
-                contactPhone,
-                status: "active",      // Only active (mid-flow) sessions can hold a lock
-                engineLocked: { $ne: true }
-            },
+            { educatorId, contactPhone, engineLocked: { $ne: true } },
             { $set: { engineLocked: true, lockedAt: new Date() } },
             { new: true, upsert: false }
         );
 
-        if (session) return true; // Successfully acquired lock on an existing active session
+        if (session) return true; // Successfully acquired lock on existing session
 
-        // Check if there is ANY active session currently held by another process
-        const lockedActive = await AutomationSession.findOne({
-            educatorId,
-            contactPhone,
-            status: "active",
-            engineLocked: true
-        });
-
-        if (!lockedActive) {
-            // No active session exists and no active lock — safe to proceed without a lock record
+        // If no session exists at all, we create a fresh one *with* the lock enabled atomically
+        try {
+            await AutomationSession.create({
+                educatorId,
+                contactPhone,
+                status: 'completed', // Not currently mid-flow
+                engineLocked: true,
+                lockedAt: new Date(),
+                state: {},
+            });
             return true;
+        } catch (err: any) {
+            if (err.code !== 11000) throw err; // Ignore duplicate key errors if someone beat us to creating it
         }
 
-        // Another process is actively running for this contact — wait and retry
+        // Wait 250ms and try again
         await new Promise(resolve => setTimeout(resolve, 250));
     }
 
@@ -55,9 +43,8 @@ async function acquireLock(educatorId: string, contactPhone: string, maxWaitMs =
 }
 
 async function releaseLock(educatorId: string, contactPhone: string) {
-    // Release lock on all sessions for this contact (covers edge cases)
-    await AutomationSession.updateMany(
-        { educatorId, contactPhone, engineLocked: true },
+    await AutomationSession.findOneAndUpdate(
+        { educatorId, contactPhone },
         { $unset: { engineLocked: 1, lockedAt: 1 } }
     );
 }
@@ -101,14 +88,13 @@ export async function processIncomingMessage(
         }
 
         // 2. Check for trigger matches on active flows
-        // Exclude Cal.com flows — they must never fire from a plain WhatsApp text message
         const activeFlows = await AutomationFlow.find({
             educatorId,
-            isActive: true,
-            source: { $nin: ["calcom"] }
+            isActive: true
         });
 
         if (!activeFlows || activeFlows.length === 0) {
+            console.log(`[ChatbotEngine] No active flows for educator ${educatorId}`);
             return; // No active automations
         }
 
@@ -172,6 +158,9 @@ export async function processIncomingMessage(
 
     } catch (error) {
         console.error("[ChatbotEngine Error]", error);
+    } finally {
+        // ALWAYS release the concurrency lock so future messages aren't blocked!
+        await releaseLock(educatorId, contactPhone);
     }
 };
 
